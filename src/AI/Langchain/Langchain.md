@@ -1,11 +1,139 @@
 # LangChain 完整知识（LangChain.js v1 · TypeScript）
 
-> 本文整合自「LangChain 基础教程」与「LangChain / LangGraph / Deep Agents 关系说明」两份材料。
 > 所有代码基于 `langchain@1.4.4`。读完这一份，你能建立 LangChain 的核心心智、写出 LCEL 管道，并分清 LangChain / LangGraph / Deep Agents 三者定位。
 
 ---
 
-## 0. 核心心智：一切皆 Runnable
+## 0. 环境准备
+
+### 版本基线（LangChain.js v1）
+
+| 包                         | 版本   | 作用                                                    |
+| -------------------------- | ------ | ------------------------------------------------------- |
+| `langchain`                | 1.4.4  | 主包，`createAgent`、`tool`、`initChatModel` 都在这里   |
+| `@langchain/core`          | 1.1.48 | 核心抽象：消息 / 文档 / Runnable / Prompt               |
+| `@langchain/openai`        | 1.4.7  | OpenAI 聊天模型 + Embeddings                            |
+| `@langchain/anthropic`     | 1.4.0  | Claude 聊天模型                                         |
+| `@langchain/langgraph`     | 1.3.7  | Agent 运行时 + 记忆（checkpointer）                     |
+| `@langchain/textsplitters` | 1.0.1  | 文档切分                                                |
+| `@langchain/classic`       | 1.0.34 | v1 里被移出主包的 legacy 组件（如 `MemoryVectorStore`） |
+| `zod`                      | 4.x    | 定义工具入参 schema（v1 已支持 zod v4）                 |
+
+运行环境：Node v24.x、npm 11.x。需要 Node ≥ 20。
+
+### v1 三个最关键的「新旧写法」变化
+
+网上大量旧教程仍在用废弃写法，务必认清：
+
+1. **Agent**：用主包的 `createAgent` ✅ —— 不要用 `initializeAgentExecutorWithOptions` / `AgentExecutor` ❌
+2. **链（Chain）**：用 LCEL 管道 `.pipe()` ✅ —— 不要用 `LLMChain` / `RetrievalQAChain` / `ConversationChain` ❌
+3. **记忆（Memory）**：用 LangGraph 的 `checkpointer` ✅ —— 不要用 `BufferMemory` / `ConversationBufferMemory` ❌
+
+还有一个易踩的坑：
+
+- `MemoryVectorStore` 等 legacy 向量库**已从 `langchain` 主包移到 `@langchain/classic`**。旧代码里的 `import { MemoryVectorStore } from "langchain/vectorstores/memory"` 在 v1 会直接报 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
+
+### 项目初始化
+
+```bash
+# 1. 初始化（ESM 项目）
+npm init -y
+npm pkg set type=module
+
+# 2. 安装
+npm i langchain@1.4.4 \
+      @langchain/core@1.1.48 \
+      @langchain/openai@1.4.7 \
+      @langchain/anthropic@1.4.0 \
+      @langchain/langgraph@1.3.7 \
+      @langchain/textsplitters@1.0.1 \
+      @langchain/classic@1.0.34 \
+      zod@4
+
+# 3. TypeScript 工具链
+npm i -D typescript tsx @types/node
+```
+
+`tsconfig.json` 最小配置：
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": "dist"
+  },
+  "include": ["src/**/*.ts"]
+}
+```
+
+直接跑 TS（无需先编译）：
+
+```bash
+npx tsx src/01-hello.ts
+```
+
+### API Key + 第三方接口（OpenAI 兼容）
+
+统一用 **OpenAI 格式调用第三方接口**（DeepSeek、Kimi、本地 vLLM/Ollama、各种中转站等）。
+做法：照常用 `@langchain/openai`，只是额外指定 `baseURL` 指向第三方服务。
+
+```bash
+# PowerShell（当前会话）
+$env:OPENAI_API_KEY="你的第三方key"
+$env:OPENAI_BASE_URL="https://你的第三方地址/v1"   # 注意：大多数服务要带 /v1 后缀
+```
+
+> `OPENAI_API_KEY` 会被模型类自动读取；但 **`baseURL` 不会自动从环境变量生效**，
+> 必须在代码里显式传 `configuration: { baseURL: ... }`（见下面统一写法）。所以这里把它存进
+> `OPENAI_BASE_URL` 只是为了代码里好引用，变量名你随意。
+
+推荐用 `.env` + `process.loadEnvFile()`（Node 20.6+ 内置）或 `dotenv`。
+
+#### 统一写法
+
+聊天模型和 Embedding 都通过 `configuration.baseURL` 指向第三方（官方推荐写法）：
+
+```ts
+import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
+
+// 聊天模型
+const model = new ChatOpenAI({
+  model: "deepseek-chat", // 改成你的第三方支持的模型名
+  temperature: 0,
+  apiKey: process.env.OPENAI_API_KEY,
+  configuration: {
+    baseURL: process.env.OPENAI_BASE_URL, // 关键：指向第三方
+  },
+});
+
+// Embedding（RAG 用）
+const embeddings = new OpenAIEmbeddings({
+  model: "text-embedding-3-small", // 改成你的第三方支持的 embedding 模型名
+  apiKey: process.env.OPENAI_API_KEY,
+  configuration: {
+    baseURL: process.env.OPENAI_BASE_URL,
+  },
+});
+```
+
+> ⚠️ 两个常见坑：
+>
+> 1. **不是所有第三方都提供 embedding 接口**。如果你的服务只有 chat、没有 embedding，
+>    RAG 的向量化要换一个支持 embedding 的服务（可以和 chat 用不同的 baseURL/key）。
+> 2. **模型名必须是第三方实际支持的**，`gpt-4o`、`text-embedding-3-small` 只是 OpenAI 官方名，
+>    第三方可能叫别的（如 `deepseek-chat`、`bge-m3`）。报 404/model not found 多半是这里。
+>
+> 另：`createAgent` 若用字符串简写（`"openai:gpt-4o"`）**无法指定 baseURL**，
+> 因此 Agent 一律传 new 出来的 **模型实例**。
+
+---
+
+## 1. 核心心智：一切皆 Runnable
 
 LangChain 不是「一个能聊天的库」，它的本质是：
 
@@ -21,7 +149,7 @@ LangChain 不是「一个能聊天的库」，它的本质是：
 
 ---
 
-## 1. LangChain / LangGraph / Deep Agents 的关系
+## 2. LangChain / LangGraph / Deep Agents 的关系
 
 ```text
 LangChain   = LLM 应用开发框架
@@ -67,13 +195,13 @@ LangGraph
 在 TypeScript 中常见的入口：
 
 ```ts
-import { createAgent, tool } from "langchain";   // LangChain
-import { createDeepAgent } from "deepagents";    // Deep Agents
+import { createAgent, tool } from "langchain"; // LangChain
+import { createDeepAgent } from "deepagents"; // Deep Agents
 ```
 
 ---
 
-## 2. 调用模型（Hello World）
+## 3. 调用模型（Hello World）
 
 ### 方式 A：`initChatModel`（v1 推荐，模型无关）
 
@@ -110,7 +238,7 @@ const model = await initChatModel("openai:deepseek-chat", {
 import { ChatOpenAI } from "@langchain/openai";
 
 const model = new ChatOpenAI({
-  model: "deepseek-chat",                 // 第三方支持的模型名
+  model: "deepseek-chat", // 第三方支持的模型名
   temperature: 0,
   apiKey: process.env.OPENAI_API_KEY,
   configuration: {
@@ -124,12 +252,16 @@ const model = new ChatOpenAI({
 
 ---
 
-## 3. 消息（Messages）
+## 4. 消息（Messages）
 
 聊天模型的输入不是裸字符串，而是一组消息。三种最常用角色：
 
 ```ts
-import { SystemMessage, HumanMessage, AIMessage } from "@langchain/core/messages";
+import {
+  SystemMessage,
+  HumanMessage,
+  AIMessage,
+} from "@langchain/core/messages";
 
 const res = await model.invoke([
   new SystemMessage("你是一个简洁的技术助手，只用中文回答。"),
@@ -152,7 +284,7 @@ const res = await model.invoke([
 
 ---
 
-## 4. Prompt 模板（ChatPromptTemplate）
+## 5. Prompt 模板（ChatPromptTemplate）
 
 把可变部分抽成占位符，复用提示词。
 
@@ -177,7 +309,7 @@ console.log(res.content);
 
 ---
 
-## 5. LCEL 管道：把积木串起来（本文重点）
+## 6. LCEL 管道：把积木串起来（本文重点）
 
 这是 v1 的核心写法。`prompt`、`model`、`parser` 都是 Runnable，用 `.pipe()` 连成一条链：
 
@@ -224,7 +356,7 @@ console.log(text); // 直接是 string，不再是 AIMessage 对象
 
 ---
 
-## 6. 流式输出（Streaming）
+## 7. 流式输出（Streaming）
 
 把 `.invoke()` 换成 `.stream()`，拿到一个异步迭代器，逐块打印：
 
@@ -241,7 +373,7 @@ for await (const chunk of stream) {
 
 ---
 
-## 7. 结构化输出（Structured Output）
+## 8. 结构化输出（Structured Output）
 
 让模型直接返回**类型安全的 JSON 对象**，而不是一段需要你手动解析的文本。用 zod 定义形状，`withStructuredOutput` 绑定。
 
@@ -263,9 +395,9 @@ const structured = model.withStructuredOutput(Recipe);
 
 const result = await structured.invoke("给我一个番茄炒蛋的简易菜谱");
 
-console.log(result.name);     // string
-console.log(result.steps);    // string[]
-console.log(result.minutes);  // number
+console.log(result.name); // string
+console.log(result.steps); // string[]
+console.log(result.minutes); // number
 // result 完全符合 Recipe 类型，TS 有完整提示
 ```
 
@@ -273,7 +405,7 @@ console.log(result.minutes);  // number
 
 ---
 
-## 8. 批处理（Batch）
+## 9. 批处理（Batch）
 
 一次并发跑多个输入：
 
@@ -287,7 +419,7 @@ console.log(answers); // [string, string]
 
 ---
 
-## 9. 完整可运行示例
+## 10. 完整可运行示例
 
 ```ts
 // src/01-full.ts
@@ -336,7 +468,7 @@ npx tsx src/01-full.ts
 
 ---
 
-## 10. 最小实践路线（按小项目学，而不是只看概念）
+## 11. 最小实践路线（按小项目学，而不是只看概念）
 
 ### 项目 1：模型调用
 
