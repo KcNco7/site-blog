@@ -321,39 +321,6 @@ export default defineConfig({
           ],
         },
       ],
-      // 其他
-      "/src/other/": [
-        { text: "2026年学习日志", link: "/src/other/2026年的碎碎念.md" },
-        {
-          text: "碎碎念",
-          items: [
-            {
-              text: "一些需要记录的东西",
-              // link: "/src/other/装机注意事项.md",
-              items: [
-                { text: "装机注意事项", link: "/src/other/装机注意事项.md" },
-                { text: "电影清单", link: "/src/other/电影清单.md" },
-                {
-                  text: "简单记录一下工作流程",
-                  link: "/src/other/工作流程.md",
-                },
-                {
-                  text: "配置 Go 环境",
-                  link: "/src/other/配置 Go 环境.md",
-                },
-              ],
-            },
-            {
-              text: "一些小知识",
-              items: [
-                { text: "剪映", link: "/src/other/jianji/剪映.md" },
-                { text: "达芬奇", link: "/src/other/jianji/达芬奇.md" },
-                { text: "测试页面", link: "/src/other/jianji/测试页面.md" },
-              ],
-            },
-          ],
-        },
-      ],
       // AI
       "/src/AI/": [
         {
@@ -390,6 +357,43 @@ export default defineConfig({
                   text: "Nestjs项目前置知识总结",
                   link: "/src/demo/nestjs+vue3项目前置知识总结.md",
                 },
+              ],
+            },
+          ],
+        },
+      ],
+      // 其他
+      "/src/other/": [
+        { text: "2026年学习日志", link: "/src/other/2026年的碎碎念.md" },
+        {
+          text: "碎碎念",
+          items: [
+            {
+              text: "一些需要记录的东西",
+              // link: "/src/other/装机注意事项.md",
+              items: [
+                { text: "装机注意事项", link: "/src/other/装机注意事项.md" },
+                { text: "电影清单", link: "/src/other/电影清单.md" },
+                {
+                  text: "简单记录一下工作流程",
+                  link: "/src/other/工作流程.md",
+                },
+                {
+                  text: "配置 Go 环境",
+                  link: "/src/other/配置 Go 环境.md",
+                },
+                {
+                  text: "雅思",
+                  link: "/src/other/雅思.md",
+                },
+              ],
+            },
+            {
+              text: "一些小知识",
+              items: [
+                { text: "剪映", link: "/src/other/jianji/剪映.md" },
+                { text: "达芬奇", link: "/src/other/jianji/达芬奇.md" },
+                { text: "测试页面", link: "/src/other/jianji/测试页面.md" },
               ],
             },
           ],
