@@ -331,6 +331,10 @@ export default defineConfig({
               link: "/src/AI/Langchain/Langchain.md",
             },
             {
+              text: "Langchain自己总结的",
+              link: "/src/AI/Langchain/Langchain-自己总结的.md",
+            },
+            {
               text: "RAG",
               link: "/src/AI/Langchain/RAG.md",
             },
