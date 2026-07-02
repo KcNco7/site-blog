@@ -1,4 +1,4 @@
-# Vue 3.5 + TS 中 defineProps / defineEmits / defineExpose 详解
+# Vue 3.5 中 defineProps / defineEmits / defineExpose 详解
 
 在 `<script setup>` 语法糖中,这三个 API 都是**编译时宏**(compile-time macros),不需要 import,编译器会在构建阶段直接展开。它们共同解决了父子组件之间的三种通信需求:
 

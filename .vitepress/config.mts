@@ -167,6 +167,7 @@ export default defineConfig({
 
     // 主要内容
     sidebar: {
+      // 前端
       "/src/frontend/": [
         {
           text: "前端",
@@ -249,6 +250,7 @@ export default defineConfig({
           ],
         },
       ],
+      // 后端
       "/src/backend/": [
         {
           text: "后端",
@@ -297,6 +299,7 @@ export default defineConfig({
           ],
         },
       ],
+      // 小知识
       "/src/web/": [
         {
           text: "小知识总结",
@@ -306,10 +309,19 @@ export default defineConfig({
             { text: "小知识总结", link: "/src/web/小知识总结.md" },
             { text: "RBAC", link: "/src/web/RBAC权限控制.md" },
             { text: "JWT", link: "/src/web/JWT.md" },
+            {
+              text: "Axios二次封装示例",
+              link: "/src/web/axios二次封装示例.md",
+            },
+            {
+              text: "Vue3常用宏讲解",
+              link: "/src/web/vue3常用宏讲解",
+            },
             // { text: "正则表达式", link: "/src/web/正则表达式.md" },
           ],
         },
       ],
+      // 其他
       "/src/other/": [
         { text: "2026年学习日志", link: "/src/other/2026年的碎碎念.md" },
         {
@@ -342,6 +354,7 @@ export default defineConfig({
           ],
         },
       ],
+      // AI
       "/src/AI/": [
         {
           text: "AI",
@@ -360,7 +373,12 @@ export default defineConfig({
             },
           ],
         },
+        {
+          text: "Codex命令总结",
+          link: "/src/AI/Codex命令总结.md",
+        },
       ],
+      // 项目总结
       "/src/demo/": [
         {
           text: "项目总结",
