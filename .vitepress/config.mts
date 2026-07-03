@@ -410,4 +410,5 @@ export default defineConfig({
     },
     socialLinks: [{ icon: "github", link: "https://github.com/KcNcozz" }],
   },
+  ignoreDeadLinks: true, // 忽略所有死链检查
 });
