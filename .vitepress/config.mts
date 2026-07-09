@@ -129,6 +129,10 @@ export default defineConfig({
         text: "AI",
         items: [
           {
+            text: "Langchain-听课总结",
+            link: "/src/AI/Langchain/Langchain-自己总结的.md",
+          },
+          {
             text: "Langchain",
             link: "/src/AI/Langchain/Langchain.md",
           },
