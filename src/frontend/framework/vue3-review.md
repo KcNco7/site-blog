@@ -1,167 +1,162 @@
 # Vue3复习 <Badge type="warning" text="总结于小满zs的vue课程" />
 
-## 1. Nodejs源码
+## 1. Node.js 源码
 
-三部分组成：
-
-1. Libuv
-2. 第三方库
-3. V8
+Node.js 的源码并不能简单概括为三部分。其核心同时包含 JavaScript 与 C/C++ 实现，并集成了 V8、libuv、llhttp、OpenSSL 等依赖：V8 负责执行 JavaScript，libuv 提供事件循环、线程池和跨平台异步 I/O 等能力，其他库分别承担 HTTP 解析、加密、压缩等职责。
 
 ## 2. `npm run dev`流程
 
-## 3. 模板语法 vue指令
+`npm run dev` 会先查找当前包 `package.json` 的 `scripts.dev`，并把依赖包提供的可执行文件目录临时加入 `PATH`，再交给系统 shell 执行脚本。脚本究竟启动 Vite、webpack 还是其他工具，取决于 `dev` 的具体配置；npm 不会自动推断开发服务器。
 
-1. 模板语法支持**计算**和**三元运算**
-2. `v-text`和`v-html`(不支持解析组件)
-3. `v-if`（变为注释节点）和`v-show`（变成`display:none` 性能更高）
+## 3. 模板语法与 Vue 指令
+
+1. 模板插值支持 JavaScript 表达式（例如运算和三元表达式），但不能直接书写语句。
+2. `v-text` 设置元素的文本内容；`v-html` 插入原始 HTML，不会把其中内容编译成 Vue 模板，并且只能用于可信内容以避免 XSS。
+3. `v-if` 按条件创建或销毁分支；`v-show` 始终渲染元素，只切换 `display`。前者初始开销较低，后者更适合频繁切换，不能笼统地说哪一个始终性能更高。
 4. `v-if`在组件上使用会有区别（后面讲）
-5. `v-on:click="xxx"`等价于`@click="xxx"` 也支持事件变为动态的 （冒泡事件 `.shop`取消）
-6. `v-bind="id"`绑定元素上的一些属性，简写为`:id`。也可以绑定style，class，也可以用表达式去判断
-7. `v-model`一般绑定表单元素
+5. `v-on:click="xxx"` 等价于 `@click="xxx"`，参数也可以动态指定；`.stop` 修饰符用于调用 `event.stopPropagation()`。
+6. `v-bind:id="id"` 可简写为 `:id="id"`；不带参数的 `v-bind="attrs"` 用来一次绑定一个属性对象。它也能绑定 `class`、`style` 或表达式结果。
+7. `v-model` 可用于表单控件，也可用于组件的双向绑定约定。
 8. `v-for`遍历，支持嵌套循环
 9. `v-once`仅渲染元素和组件一次，并跳过之后的更新。
-10. `v-memo`配合`v-for`使用（面试）
+10. `v-memo` 可缓存模板子树，依赖值未变化时跳过更新；它可以配合 `v-for` 优化大型列表，但并非只能这样使用。
 
-## 4. 虚拟DOM diff算法
+## 4. 虚拟 DOM 与 Diff 算法
 
-### 虚拟DOM
+### 虚拟 DOM
 
-> 虚拟DOM：虚拟DOM就是通过JS来生成一个AST节点树
+虚拟 DOM 是用 JavaScript 对象描述 UI 结构的一棵 VNode 树。它与编译模板时产生的 AST 用途不同：AST 表示源代码语法结构，VNode 表示一次渲染所需的界面结构。
 
-DOM上属性太多了，直接操作DOM非常浪费性能。解决方案就是可以用JS的计算性能来换取操作Dom所消耗的性能，既然无法逃避操作Dom,我们可以尽可能少的操作DOM，
-操作JS是非常快的。
+状态变化后，Vue 会生成新的 VNode，并结合编译器提供的静态标记与运行时 Diff，计算需要提交到真实 DOM 的更新。虚拟 DOM 的价值是提供声明式、跨平台的渲染模型并帮助缩小更新范围，并不意味着它在所有场景中都比直接操作 DOM 更快。
 
-### diff
+### Diff
 
-- 无key：for循环patch，重新渲染元素 --> 删除 --> 新增
-
-- 有key：前序算法（头和头比） --> 尾序算法（尾和尾比） --> 发现多的 新增 --> 发现少的 卸载 --> 无序 （1. 构建索引映射关系 2. 如果有多余的旧节点 删除，如果新节点不包含旧节点 删除，节点出现交叉 说明是移动要去求最长递增子序列 3. 求最长递增子序列升序（最长递增子序列算法 贪心+二分）如果当前遍历的这个节点不在子序列说明要进行移动 如果节点在序列中直接跳过）
+- 无 `key` 的同类型子节点通常按位置就地更新；这可能复用错误的组件或表单状态，因此不能理解成简单的“全部重新渲染”。
+- 有稳定且唯一的 `key` 时，Vue 可以按身份匹配节点。处理未知序列时会先同步首尾，再建立新节点索引并移除、挂载或移动节点；最长递增子序列用于减少必要的 DOM 移动。
 
 ## 5. Ref
 
-1. `ref`变为响应式。`ref`返回的是class类，修改值必须加`.value`
+1. `ref()` 返回带 `.value` 的响应式 Ref 对象；它是否由 class 实现属于内部细节。在 JavaScript/TypeScript 中读写其值使用 `.value`，模板中顶层 ref 通常会自动解包。
 
-   ```vue
-   const xxx = ref<string>("aaa")
+   ```ts
+   import { ref, type Ref } from "vue";
 
-   const xxx:Ref<string> = ref("aaa")
+   const first = ref<string>("aaa");
+   const second: Ref<string> = ref("aaa");
    ```
 
 2. `isRef`判断是否为Ref对象
 
-3. `shallowRef`浅层响应式 只到`.value` **Ref和shallRef不能一起写，否则会影响shallRef，造成视图更新**
+3. `shallowRef` 只跟踪 `.value` 本身的替换，不会把内部对象递归转为响应式。`ref` 与 `shallowRef` 可以在同一组件中使用；若二者引用了同一个已被深层响应式代理的对象，观察结果会受共享对象和代理关系影响，但不是 API 之间“不能一起写”。
 
-4. `triggerRef`
+4. `triggerRef(shallow)` 可在深层修改 `shallowRef` 的内部值后，显式触发依赖它的副作用更新。
 
 5. `customRef`自定义Ref 写防抖
 
-   ```vue
-   function MyRef<T>(value:T){
-       return customRef((track,trigger)=>{
-       return {
-   		get(){
-       		track()
-           	return value
-      			 },
-   		set (newVal) {
-   			value = newVal
-       		trigger()
-       		}
-   		}
-       })
-    }
+   ```ts
+   import { customRef } from "vue";
+
+   function myRef<T>(value: T) {
+     return customRef<T>((track, trigger) => ({
+       get() {
+         track();
+         return value;
+       },
+       set(newValue) {
+         value = newValue;
+         trigger();
+       },
+     }));
+   }
    ```
 
 6. ref可以用于dom元素
 
 ## 6. Reactive
 
-1. ref支持所有数据类型，reactive只支持引用类型
-2. reactive不需要`.value`
-3. `@click.prevent="xxx"` 阻止默认提交事件
+1. `ref` 可以持有任意值；`reactive` 只能接收对象类型，包括普通对象、数组以及 `Map`、`Set` 等集合。
+2. `reactive` 返回代理对象，访问属性时不使用 `.value`。
+3. `@click.prevent="xxx"` 会阻止该事件的默认行为；默认行为不一定是表单提交。
 4. `@click.stop="xxx"` 阻止冒泡
-5. reactive是proxy代理对象 不能直接赋值 否则会丢失响应式 （解决方案：数组可以使用push加结构，或者添加一个对象，把数组作为一个属性去解决）
+5. `reactive` 返回 Proxy。若把保存该代理的变量直接替换为另一个普通对象，旧代理的依赖关系不会自动转移；可以修改代理的属性、使用 `Object.assign`，或改用 `ref` 保存需要整体替换的对象。
 6. `readonly` 只读
 7. `shallowReactive` 创建一个浅层proxy对象
 
-## 7. toRef toRefs toRaw
+## 7. toRef、toRefs 与 toRaw
 
-1. `toRef` 只能修改响应式对象的值，非响应式视图毫无变化，解构后仍为响应式
-2. `toRefs` 实现多个`toRef`
-3. `toRaw` 脱离响应式，变为原始数据
+1. `toRef(object, key)` 为对象属性创建双向关联的 ref；对响应式对象使用时，可在解构后保持该属性的响应式连接。较新的 Vue 版本也支持把 getter、现有 ref 或普通值规范化为 ref。
+2. `toRefs` 把对象当前所有可枚举属性分别转换为关联 ref，常用于返回响应式对象时支持解构。
+3. `toRaw(proxy)` 返回 Vue 代理背后的原始对象，适合临时读取或避免代理开销；不建议长期持有并直接修改它，因为这会绕过响应式追踪。
 
 ## 8. 响应式原理
 
+下面用一个最小示例说明“读取时收集依赖、写入时触发依赖”的核心思路。它不是 Vue 源码，省略了嵌套 effect、依赖清理、代理缓存、集合类型与数组边界等生产级处理。
+
 ```ts
-// reactive
-export const reactive = <T extends object>(target: T) => {
-   return new Proxy(target, {
-      get(target, key, receiver) {
-         let res = Reflect.get(target, key, receiver)
-         return res
-      },
-      set(target, key, value, receiver) {
-         let res = Reflect.set(target, key, value, receiver)
-         return res
-      }
-   })
+type EffectRunner = (() => unknown) & { scheduler?: () => void };
+
+let activeEffect: EffectRunner | undefined;
+const targetMap = new WeakMap<object, Map<PropertyKey, Set<EffectRunner>>>();
+
+function effect(fn: () => unknown, scheduler?: () => void) {
+  const runner: EffectRunner = () => {
+    activeEffect = runner;
+    try {
+      return fn();
+    } finally {
+      activeEffect = undefined;
+    }
+  };
+  runner.scheduler = scheduler;
+  runner();
+  return runner;
 }
 
-// effect
-interface Options {
-   scheduler?: Function
- }
-
-
-let activeEffect:Function;
-export const = effect(fn:Function, options:Options) => {
-   const _effect = function() {
-      activeEffect = _effect
-      let res = fn()
-      return res
-   }
-   _effect.options = options
-   _effect()
-   return _effect
+function track(target: object, key: PropertyKey) {
+  if (!activeEffect) return;
+  let depsMap = targetMap.get(target);
+  if (!depsMap) targetMap.set(target, (depsMap = new Map()));
+  let dep = depsMap.get(key);
+  if (!dep) depsMap.set(key, (dep = new Set()));
+  dep.add(activeEffect);
 }
 
-const targetMap = new WeakMap()
-export const track = (target, key) => {
-   targetMap.get(target)
-   if (!depsMap) {
-      depsMap = new Map()
-      targetMap.set(target, depsMap)
-   }
-   let deps = depsMap.get(key)
-   if (!deps) {
-      deps = new Set()
-      depsMap.set(key, deps)
-   }
-   deps.add(activeEffect)
+function trigger(target: object, key: PropertyKey) {
+  const dep = targetMap.get(target)?.get(key);
+  dep?.forEach((runner) => {
+    if (runner.scheduler) runner.scheduler();
+    else runner();
+  });
 }
 
-export const trigger = (target, key) => {
-   const depsMap = targetMap.get(target)
-   if (!depsMap) return
-   const deps = depsMap.get(key)
-
-   deps.forEach(effect => {
-      if(effect?.options?.scheduler) {
-         effect?.options?.scheduler?.()
-      } else {
-         effect()
-      }
-   })
+function reactive<T extends object>(target: T): T {
+  return new Proxy(target, {
+    get(target, key, receiver) {
+      track(target, key);
+      return Reflect.get(target, key, receiver);
+    },
+    set(target, key, value, receiver) {
+      const oldValue = Reflect.get(target, key, receiver);
+      const changed = Reflect.set(target, key, value, receiver);
+      if (changed && !Object.is(oldValue, value)) trigger(target, key);
+      return changed;
+    },
+  });
+}
 ```
 
-## 9. computed
+## 9. computed 计算属性
 
 - `computed`返回一个对象，对象有`value`属性，属性值就是计算后的结果
 
 ```ts
+import { computed, ref } from "vue";
+
+const firstName = ref("Ada");
+const lastName = ref("Lovelace");
+
 // 1. 选项式写法 支持一个对象传入get函数以及set函数自定义操作
-let name = computed<string>({
+const writableName = computed<string>({
   get() {
     return firstName.value + " " + lastName.value;
   },
@@ -170,38 +165,15 @@ let name = computed<string>({
   },
 });
 // 2. 函数式写法 只能支持一个getter函数不允许修改值的
-let name = computed(() => firstName.value + "_" + lastName.value);
+const readonlyName = computed(() => firstName.value + "_" + lastName.value);
 
-// 3. 实战
-
-// 4. 手搓源码 conmputed.ts
-export const computed = (getter: Function) => {
-  let _value = effect(getter, {
-    scheduler: () => {
-      _dirty = true;
-    },
-  }); // effect是之前手写过的
-  let catchValue;
-  let _dirty = true; // 脏值检查
-
-  class ComputedRefImpl {
-    get value() {
-      if (_dirty) {
-        catchValue = _value();
-        _dirty = false;
-      }
-      return catchValue;
-    }
-  }
-
-  return new ComputedRefImpl();
-};
+// computed 会缓存 getter 的结果；依赖未变化时，多次读取 readonlyName.value 不会重复计算。
 ```
 
-## 10. watch
+## 10. watch 侦听器
 
 - watch: 监听响应式数据变化
-- reactive 默认深度监听
+- 直接把响应式对象传给 `watch` 时会隐式深度监听；若传入返回该对象的 getter，则默认只在返回值被替换时触发，需要时再配置 `deep`。
 
 ```ts
 /**
@@ -224,26 +196,26 @@ watch(
 // 源码
 ```
 
-## 11. watchEffect
+## 11. watchEffect 侦听器
 
 ```ts
 // 返回一个函数，调用这个函数就可以停止监听
-const stop = watchEffect((oninvalidate) => {
-  console.log("监听到数据变化了", name.value); // 再打印这个
-  oninvalidate(() => {
-    console.log("before"); // 先执行这个（清除副作用）
+const stop = watchEffect((onCleanup) => {
+  console.log("监听到数据变化了", name.value);
+  onCleanup(() => {
+    console.log("before"); // 下次重新执行前或侦听器停止时清理副作用
   });
-} {
-   flush: "pre", // 默认 默认组件更新之前调用 sync 同步执行  post 组件更新之后执行
-   onTrigger(effect) { // 调试
-      debugger;
-   }
+}, {
+  flush: "pre", // 默认；还可使用 "sync" 或 "post"
+  onTrigger(event) {
+    console.debug(event); // 仅用于开发期调试
+  },
 });
 
-const stopWatch = stop(); // 停止监听
+stop(); // 需要提前结束时调用停止句柄
 ```
 
-## 12. 组件 生命周期
+## 12. 组件生命周期
 
 - `.vue`结尾的文件都可以是组件
 - 组件可以复用 循环
@@ -252,7 +224,7 @@ const stopWatch = stop(); // 停止监听
 // 组件生命周期
 console.log("setup");
 onBeforeMount(() => {
-  // 这里读不到dom
+  // 此时组件自己的模板 DOM 尚未挂载，模板 ref 通常仍为 null
   console.log("beforeMount");
 });
 onMounted(() => {
@@ -288,126 +260,87 @@ onRenderTriggered((e) => {
 // 源码
 ```
 
-## 13. BEM架构 Layout布局
+## 13. BEM 架构与 Layout 布局
 
-- BEM 命名规则 `el-block__element--modifier`
-- sass语法
+- BEM 的基本命名形式是 `block__element--modifier`。`el-` 是具体组件库可能使用的命名前缀，不属于 BEM 规范本身。
+- Sass 可以通过嵌套和 `&` 辅助组织 BEM 选择器，但 BEM 并不依赖 Sass。
 
 ## 14. 父子组件传参
 
-```ts
-// 1. 给子组件传值
-// v-bind
-// ****父组件
-let name = "xxx"
-<water :title="name"></water>
+父组件通过 props 向下传值，子组件通过自定义事件向上通知。每个 `<script setup>` 中只能调用一次 `defineProps` 和一次 `defineEmits`，下面分别展示子组件与父组件。
 
-// ****子组件 接收父组件传过来的值
-// 这种只能用在模板中
-defineProps({
-   title: {
-      type: String,
-      default: "默认值"
-   }
-})
+```vue
+<!-- Water.vue -->
+<script setup lang="ts">
+const props = withDefaults(
+  defineProps<{
+    title?: string;
+    items?: number[];
+  }>(),
+  {
+    title: "默认值",
+    items: () => [1, 2, 3],
+  },
+);
 
-// 若要在代码(js)中使用 需要接收一个返回值
-const prop = defineProps({
-   title: {
-      type: String,
-      default: "默认值"
-   }
-})
-
-console.log(prop.title)
-
-// 若要在ts中使用 使用泛型自变量模式
-const props = defineProps<{
-   title: string
-}>()
-// 若要在ts中定义默认值 ts特有的
-withDefaults(defineProps<{
-   title: string
-   arr: number[]
-}>(), {
-   arr: () => [1, 2, 3]
-})
-
-// 2. 给父组件传值
-// ****子组件
-<button @click="send">给父组件传值</button>
-// 需要使用emit
-const emit = defineEmits(['on-click'])
-const send = () => {
-   emit('on-click', '需要传递的参数','可以有多个')
-}
-
-// 若使用了ts，还可以这样写
-<button @click="send">给父组件传值</button>
 const emit = defineEmits<{
-   // 可以有多个
-  (e: 'on-click', name: string): void,
-  (e: 'on-click', name: string): void,
-}>()
-const send = () => {
-   emit('on-click', '需要传递的参数','可以有多个')
-}
-// ****父组件
-<water @on-click="getName"></water>
+  select: [name: string, source: string];
+}>();
 
-const getName = (name: string) => {
-   console.log(name)
+function send() {
+  emit("select", props.title, "Water");
 }
 
-// 还可以给父组件暴露方法和属性(element-ui使用较多)
-// **子组件**
-defineExpose({
-   name: 'xxx',
-   open: () => {
-      console.log('打开')
-   }
-})
+const open = () => console.log("打开");
+defineExpose({ open });
+</script>
 
-// **父组件**
-<Water ref="waterFall"></Water>
-
-// waterFall这个名字要和ref后名字一致
-const waterFall = ref<InstanceType<typeof Water>>()
-waterFall.value?.open()
-waterFall.value?.name
+<template>
+  <button @click="send">{{ title }}</button>
+</template>
 ```
 
-## 15. 全局组件 局部组件 递归组件
+```vue
+<!-- Parent.vue -->
+<script setup lang="ts">
+import { ref } from "vue";
+import Water from "./Water.vue";
 
-- 全局组件: 高频出现的业务组件
-- 局部组件: 页面拆分为多个模块
-- 递归组件: Tree 菜单组件
+const title = ref("瀑布");
+const waterRef = ref<InstanceType<typeof Water> | null>(null);
 
-```ts
-// 1. 局部组件
-<Catch></Catch>
-// 2. 全局组件 全局注册 批量注册则可以使用循环（参考element-ui）
-// 在main.ts中引入
-app.component('Catch', Catch) // 组件名 组件
-// 3. 递归组件
-// 首先要确定递归组件的名称
-// 方法一：vue3中可以直接将文件名作为递归组件的名称（无需引入）
-// 方法二：若想自定义名称，则可以再写一个script标签：
-<script lang="ts">
-export default {
-   name:"xxx"
+function handleSelect(name: string, source: string) {
+  console.log(name, source);
 }
 </script>
-// 方法三：装插件 unplugin-vue-define-options 然后在vite-config.ts中引入 注册
+
+<template>
+  <Water ref="waterRef" :title="title" @select="handleSelect" />
+  <button @click="waterRef?.open()">打开子组件</button>
+</template>
 ```
 
-## 16. \*\*动态组件
+## 15. 全局组件、局部组件与递归组件
+
+- 全局组件：向整个应用注册，适合确实需要广泛使用的基础组件；过度注册会使依赖关系不清晰。
+- 局部组件：只在导入它的组件中使用，通常更利于依赖追踪和按需加载。
+- 递归组件：组件在自己的模板中调用自身，常用于树形菜单等递归数据结构，并且必须有终止条件。
+
+```ts
+// main.ts：全局注册
+import Catch from "./components/Catch.vue";
+
+app.component("Catch", Catch);
+```
+
+在 `<script setup>` 中，单文件组件可以通过文件名隐式引用自身。需要自定义组件名时，Vue 3.3+ 可直接使用 `defineOptions({ name: "TreeNode" })`，无需为此安装第三方宏插件。
+
+## 16. 动态组件
 
 ::: info 可选链操作符 `?.`
-如果某个属性可能为 `null` 或 `undefined`，则使用可选链操作符 `?.` 来访问它。如果对不到后面的属性，则返回 `undefined`（隐式转换后即为`false`）。
-`），而不是报错。
+如果某个属性可能为 `null` 或 `undefined`，可使用可选链操作符 `?.` 继续访问；遇到空值时，整段表达式返回 `undefined`，而不是抛出“无法读取属性”的错误。`undefined` 在布尔上下文中是假值，但它并不等同于布尔值 `false`。
 
-`a.children?.length?.xxx?.aaa ?? []` ---> `??`: 若左边返回`undefined`或者`null`，则返回右边的数组 只能处理`undefined`或者`null`。（`0`则返回`0`，`false`则返回`false`，和`||`有区别）
+`a.children?.length ?? 0` 中，`??` 仅在左侧为 `null` 或 `undefined` 时返回右侧；左侧为 `0` 或 `false` 时仍保留原值，这一点与 `||` 不同。
 :::
 
 > 什么是动态组件?
@@ -416,104 +349,121 @@ export default {
 
 应用场景：Tab标签页（`v-if` 动态组件 路由）
 
+使用内置的 `<component :is="...">` 可以在同一位置切换组件：
+
+```vue
+<script setup lang="ts">
+import { shallowRef } from "vue";
+import UserPanel from "./UserPanel.vue";
+import SettingsPanel from "./SettingsPanel.vue";
+
+const current = shallowRef(UserPanel);
+</script>
+
+<template>
+  <button @click="current = UserPanel">用户</button>
+  <button @click="current = SettingsPanel">设置</button>
+  <component :is="current" />
+</template>
+```
+
 ## 17. 插槽
 
 插槽就是**子组件**中，**提供给父组件使用**的一个占位符，用`<slot></slot>`表示，父组件可以在这个占位符中填充任何模板代码，如HTML组件等，填充的内容会替换子组件的`<slot></slot>`标签。
 
-**注意**：要使用`<template></template>`
+默认插槽只有一段内容时，可以直接写在组件标签内，不强制使用 `<template>`。具名插槽、作用域插槽，或需要给整段插槽内容添加 `v-if`、`v-for` 时，通常使用带 `v-slot`（简写 `#`）的 `<template>`。
 
 ### 17.1 匿名插槽
 
-```ts
-// 在子组件放置一个插槽
+```vue
+<!-- Dialog.vue -->
 <template>
-    <div>
-       <slot></slot>
-    </div>
+  <div class="dialog">
+    <slot />
+  </div>
 </template>
-// 父组件使用插槽 在父组件给这个插槽填充内容
-<Dialog>
-   <template v-slot>
-      <div>aaaaa</div>
-   </template>
-</Dialog>
+```
+
+```vue
+<!-- Parent.vue -->
+<template>
+  <Dialog>
+    <div>默认插槽内容</div>
+  </Dialog>
+</template>
 ```
 
 ### 17.2 具名插槽
 
 具名插槽就是给插槽取个名字。一个子组件可以放多个插槽，而且可以放在不同的地方，而父组件填充内容时，可以根据这个名字把内容填充到对应插槽中
 
-```ts
-// 子组件
-<div>
-   <slot name="header"></slot> // 具名插槽
-   <slot></slot> // 匿名插槽
-   <slot name="footer"></slot> // 具名插槽
-</div>
+```vue
+<!-- Dialog.vue -->
+<template>
+  <div>
+    <slot name="header" />
+    <slot />
+    <slot name="footer" />
+  </div>
+</template>
+```
 
-// 父组件
-<Dialog>
-   <template v-slot:header>
-      <div>1</div>
-   </template>
-   <template v-slot>
-      <div>2</div>
-   </template>
-   <template v-slot:footer>
-      <div>3</div>
-      </template>
-</Dialog>
+```vue
+<!-- Parent.vue -->
+<template>
+  <Dialog>
+    <template #header><div>头部</div></template>
+    <div>默认内容</div>
+    <template #footer><div>底部</div></template>
+  </Dialog>
+</template>
 ```
 
 ### 17.3 作用域插槽
 
-在子组件动态绑定参数 派发给父组件的slot去使用。
+子组件可以把数据作为 slot props 传给插槽内容；父组件通过 `v-slot` 解构并使用这些数据。这不是组件事件派发。
 
-```ts
-// 子组件
-<div>
-   <slot name="header"></slot>
-   <div>
-      <div v-for="item in 100">
-            <slot :data="item"></slot>
-            // 遍历100个数据得到item，把item传递给slot
-      </div>
-   </div>
-   <slot name="footer"></slot>
-</div>
+```vue
+<!-- NumberList.vue -->
+<template>
+  <div v-for="item in 100" :key="item">
+    <slot :data="item" />
+  </div>
+</template>
+```
 
-// 父组件
-<Dialog>
-   <template #header>
-         <div>1</div>
-   </template>
-   <template #default="{ data }">
-         <div>{{ data }}</div>
-   </template>
-   <template #footer>
-         <div>3</div>
-   </template>
-</Dialog>
+```vue
+<!-- Parent.vue -->
+<template>
+  <NumberList>
+    <template #default="{ data }">
+      <div>第 {{ data }} 项</div>
+    </template>
+  </NumberList>
+</template>
 ```
 
 ### 17.4 动态插槽
 
-动态插槽就是根据父组件传递的参数，动态的生成插槽。
+动态插槽名允许用表达式选择要填充的具名插槽；它不会自动“生成”子组件中不存在的插槽出口。
 
-```ts
-<Dialog>
-   <template #[name]>
-         <div>
-            23
-         </div>
-   </template>
-</Dialog>
+```vue
+<script setup lang="ts">
+import { ref } from "vue";
 
-// 插槽会去匹配对应的位置
-const name = ref('header') // 'header' 'default' 'footer'
+const name = ref<"header" | "footer">("header");
+</script>
+
+<template>
+  <Dialog>
+    <template #[name]>
+      <div>动态选择的插槽内容</div>
+    </template>
+  </Dialog>
+</template>
 ```
 
-## 18. 异步组件 代码分包 suspense组件
+## 18. 异步组件、代码分包与 Suspense
 
 在 Vue 3 里，异步组件就是把组件的加载变成“按需加载”，只有真正渲染到的时候才去请求对应的组件代码。常用于：
 
@@ -521,49 +471,41 @@ const name = ref('header') // 'header' 'default' 'footer'
 - 大型业务组件延迟加载
 - 配合 Suspense 做 loading 状态
 - 优化首屏性能
-- element-ui 的骨架屏
+- 为较慢的异步组件提供加载与错误状态
 
-### 顶层`await`
+### 顶层 await
 
-代码分包。`<script setup>` 中可以使用顶层 `await`。结果代码会被编译成 `async setup()`
+`<script setup>` 中可以使用顶层 `await`，编译后组件会采用 `async setup()`，并在 `await` 后恢复当前组件实例上下文。顶层 `await` 本身不等于代码分包；代码分包通常由动态 `import()` 触发。包含异步 `setup()` 的组件需要由 `<Suspense>` 等机制协调渲染，而 `<Suspense>` 目前仍属于实验性功能。
 
-```ts
-// 在setup语法糖里面 使用方法
-<script setup>
-const post = await fetch(`/api/post/1`).then(r => r.json())
-</script>
-
-// 父组件引用子组件 通过defineAsyncComponent加载异步配合import 函数模式便可以分包
+```vue
 <script setup lang="ts">
-import { reactive, ref, markRaw, toRaw, defineAsyncComponent } from 'vue'
+import { defineAsyncComponent } from "vue";
+import LoadingComponent from "./LoadingComponent.vue";
+import ErrorComponent from "./ErrorComponent.vue";
 
-// 1. import函数模式
-const Dialog = defineAsyncComponent(() => import('../../components/Dialog/index.vue'))
+const post = await fetch("/api/post/1").then((response) => response.json());
 
+// 动态 import() 会给构建工具提供代码分包边界
+const Dialog = defineAsyncComponent(
+  () => import("../../components/Dialog/index.vue"),
+);
 
-// 2. 完整写法 用的较少
+// 需要加载、错误和超时状态时使用对象形式
 const AsyncComp = defineAsyncComponent({
-  // 加载函数
-  loader: () => import('./Foo.vue'),
-
-  // 加载异步组件时使用的组件
+  loader: () => import("./Foo.vue"),
   loadingComponent: LoadingComponent,
-  // 展示加载组件前的延迟时间，默认为 200ms
   delay: 200,
-
-  // 加载失败后展示的组件
   errorComponent: ErrorComponent,
-  // 如果提供了一个 timeout 时间限制，并超时了
-  // 也会显示这里配置的报错组件，默认值是：Infinity
-  timeout: 3000
-})
+  timeout: 3000,
+});
+</script>
 ```
 
-### suspense
+### Suspense
 
-`<suspense>` 组件有两个插槽。它们都只接收一个直接子节点。`default` 插槽里的节点会尽可能展示出来。如果不能，则展示 `fallback` 插槽里的节点。
+`<Suspense>` 协调组件树中的异步依赖，并提供 `default` 与 `fallback` 两个插槽；两个插槽都要求单个直接子节点。首次渲染时，若默认内容遇到异步依赖，就先显示后备内容，依赖全部完成后再显示默认内容。该组件目前仍是实验性功能，API 可能变化。
 
-```ts
+```html
 <Suspense>
    <template #default>
          <Dialog>
@@ -581,13 +523,13 @@ const AsyncComp = defineAsyncComponent({
 
 ## 19. Teleport
 
-Teleport 是一种能够将我们的模板渲染至指定DOM节点，不受父级`style`、`v-show`等属性影响，但`data`、`prop`数据依旧能够共用的技术；
+Teleport 会把一段模板的实际 DOM 渲染到组件 DOM 层级之外的目标节点，但这段内容在 Vue 的逻辑组件树中仍属于原组件，因此 props、事件、provide/inject 等关系保持不变。
 
-主要解决的问题：Teleport节点挂载在其他指定的DOM节点下，完全不受父级`style`样式影响。
+由于真实 DOM 位置发生变化，依赖原 DOM 祖先的 CSS 选择器、层叠与继承，以及祖先元素的 `display`、`overflow`、层叠上下文等效果可能改变；不能概括为“完全不受父级样式影响”。
 
 使用方法：通过to 属性 插入指定元素位置 to="body" 便可以将Teleport 内容传送到指定位置
 
-```ts
+```html
 <Teleport to="body">
     <Loading></Loading>
 </Teleport>
@@ -595,10 +537,10 @@ Teleport 是一种能够将我们的模板渲染至指定DOM节点，不受父�
 
 动态控制`teleport`：使用`disabled`设置为`true`则 to属性不生效`false`则生效
 
-```ts
-<teleport :disabled="true" to='body'>
+```html
+<Teleport :disabled="true" to="body">
    <A></A>
-</teleport>
+</Teleport>
 ```
 
 源码：
@@ -607,48 +549,39 @@ Teleport 是一种能够将我们的模板渲染至指定DOM节点，不受父�
 // 源码解析
 ```
 
-## 20. keep-alive
+## 20. KeepAlive
 
 当我们不希望组件被重新渲染影响使用体验，或者出于性能考虑，希望组件可以缓存下来，维持当前的状态，避免多次重复渲染降低性能。这时候就需要用到`keep-alive`组件。
 
-- 直接使用`keep-alive`包裹，就可以实现全部缓存
-- `keep-alive`只能有一个子组件
+- `<KeepAlive>` 会缓存切换离开的有状态组件实例，而不是缓存任意静态 DOM。
+- 它在同一时刻应接收一个活动的直接组件子节点，最常见的是动态组件或 `<RouterView>` 产生的组件。
 
-```ts
-// 缓存
-<keep-alive>
-<A></A>
-<B></B>
-</keep-alive>
+```vue
+<script setup lang="ts">
+import { shallowRef } from "vue";
+import A from "./A.vue";
+import B from "./B.vue";
 
-// 只缓存A组件
-<keep-alive :include="['A']">
-<A></A>
-<B></B>
-</keep-alive>
+const current = shallowRef(A);
+</script>
 
-// 不缓存A组件
-<keep-alive :exclude="['A']">
-<A></A>
-<B></B>
-</keep-alive>
-
-// 缓存组件数量
-<keep-alive :max="2">
-<A></A>
-<B></B>
-</keep-alive>
+<template>
+  <!-- include/exclude 根据组件的 name 匹配；max 限制最多缓存的实例数 -->
+  <KeepAlive :include="['A']" :max="2">
+    <component :is="current" />
+  </KeepAlive>
+</template>
 ```
 
-使用`keep-alive`后，会新增两个生命周期函数`onActivated`和`onDeactivated`。
+被缓存的组件及其后代可以使用 `onActivated` 和 `onDeactivated`：首次挂载和每次重新插入 DOM 时触发 activated，移出 DOM 进入缓存以及最终卸载时触发 deactivated。
 
-## 21. transition
+## 21. Transition
 
-`transition` 组件用于过渡效果。自定义`transition`过度效果，你需要对`transition`组件的`name`属性自定义。并在css中写入对应的样式。
+`<Transition>` 用于给单个元素或组件的进入、离开过程添加 CSS 或 JavaScript 过渡。可以通过 `name` 生成对应的 CSS 类名，也可以直接提供自定义类名或 JavaScript 钩子；`name` 并非所有方案都必需。
 
 - 过渡的类名
 - 自定义过渡 class 类名
-- transition 生命周期8个
+- JavaScript 过渡钩子
 - appear
 
 相关网站
@@ -656,17 +589,17 @@ Teleport 是一种能够将我们的模板渲染至指定DOM节点，不受父�
 - [animate.css](https://animate.style/)
 - [GSAP](https://greensock.com/)
 
-`appear`: 通过这个属性可以设置初始节点过度 就是页面加载完成就开始动画 对应三个状态
+`appear` 用于让节点在初次渲染时也执行进入过渡，并不等同于等待整个页面加载完成。
 
-## 22. transition-group
+## 22. TransitionGroup
 
-`transition-group` 组件用于列表过渡效果。
+`<TransitionGroup>` 用于列表中元素的插入、移除和位置变化过渡。列表项应提供稳定且唯一的 `key`。
 
 - 过渡列表
 - 列表的移动过渡
 - 状态过渡
 
-## 23. 依赖注入 Provide/Inject
+## 23. 依赖注入：Provide 与 Inject
 
 当我们需要从父组件向子组件传递数据时，我们使用 props。想象一下这样的结构：有一些深度嵌套的组件，而深层的子组件只需要父组件的部分内容。在这种情况下，如果仍然将 prop 沿着组件链逐级传递下去，可能会很麻烦。
 
@@ -674,52 +607,48 @@ Teleport 是一种能够将我们的模板渲染至指定DOM节点，不受父�
 
 ![Provide/Inject](/assert/vue3-review/image.png)
 
-```ts
-// 父组件传递数据
+```vue
+<!-- Ancestor.vue -->
 <template>
-    <div class="App">
-        <button>我是App</button>
-        <A></A>
-    </div>
+  <A />
 </template>
 
-<script setup lang='ts'>
-import { provide, ref } from 'vue'
-import A from './components/A.vue'
-let flag = ref<number>(1)
-provide('flag', flag)
+<script setup lang="ts">
+import { provide, readonly, ref } from "vue";
+import A from "./components/A.vue";
+
+const flag = ref(1);
+const setFlag = (value: number) => {
+  flag.value = value;
+};
+
+provide("flag", { flag: readonly(flag), setFlag });
 </script>
-
-<style>
-.App {
-    background: blue;
-    color: #fff;
-}
-</style>
-
-// 子组件接收数据
-<template>
-    <div style="background-color: green;">
-        我是B
-        <button @click="change">change falg</button>
-        <div>{{ flag }}</div>
-    </div>
-</template>
-
-<script setup lang='ts'>
-import { inject, Ref, ref } from 'vue'
-
-const flag = inject<Ref<number>>('flag', ref(1))
-const change = () => {
-    flag.value = 2
-}
-</script>
-
-<style>
-</style>
 ```
 
-## 24. 兄弟组件传参 Bus Mitt
+```vue
+<!-- 任意后代组件 -->
+<template>
+  <button @click="state.setFlag(2)">修改 flag</button>
+  <div>{{ state.flag }}</div>
+</template>
+
+<script setup lang="ts">
+import { inject, type DeepReadonly, type Ref } from "vue";
+
+type FlagContext = {
+  flag: DeepReadonly<Ref<number>>;
+  setFlag: (value: number) => void;
+};
+
+const state = inject<FlagContext>("flag");
+if (!state) throw new Error("缺少 flag provider");
+</script>
+```
+
+大型项目通常用 `InjectionKey<T>`（`Symbol`）代替字符串 key，以避免命名冲突并获得更完整的类型推断。把修改方法与状态一起由提供者暴露，也能让状态变更集中在提供者中。
+
+## 24. 兄弟组件通信：Event Bus 与 Mitt
 
 ### 借助父组件传参
 
@@ -730,58 +659,47 @@ A组件派发事件，通过App.vue接受A组件派发的事件，然后在Props
 发布订阅模式
 
 ```ts
-type BusClass<T> = {
-  emit: (name: T) => void;
-  on: (name: T, callback: Function) => void;
+type Events = {
+  select: [id: number, label: string];
 };
-type BusParams = string | number | symbol;
-type List = {
-  [key: BusParams]: Array<Function>;
-};
-class Bus<T extends BusParams> implements BusClass<T> {
-  list: List;
-  constructor() {
-    this.list = {};
+
+class Bus<E extends { [K in keyof E]: unknown[] }> {
+  private listeners = new Map<keyof E, Set<(...args: any[]) => void>>();
+
+  on<K extends keyof E>(name: K, callback: (...args: E[K]) => void) {
+    const callbacks = this.listeners.get(name) ?? new Set();
+    callbacks.add(callback);
+    this.listeners.set(name, callbacks);
+    return () => callbacks.delete(callback);
   }
-  emit(name: T, ...args: Array<any>) {
-    let eventName: Array<Function> = this.list[name];
-    eventName.forEach((ev) => {
-      ev.apply(this, args);
-    });
-  }
-  on(name: T, callback: Function) {
-    let fn: Array<Function> = this.list[name] || [];
-    fn.push(callback);
-    this.list[name] = fn;
+
+  emit<K extends keyof E>(name: K, ...args: E[K]) {
+    this.listeners.get(name)?.forEach((callback) => callback(...args));
   }
 }
 
-export default new Bus<number>();
+export default new Bus<Events>();
 ```
 
-### \*\*Mitt
+### Mitt
 
-就是发布订阅模式的设计
+Mitt 是一个小型事件发射器，可用于实现发布/订阅式通信。使用它时应保留处理函数引用并在组件卸载时取消订阅，避免重复监听和内存泄漏。
 
 1. 安装: `npm i mitt -S`
 2. 使用:
 
 ```ts
-// main.ts
+// bus.ts
 import mitt from "mitt";
 
-const emitter = mitt();
+type Events = {
+  select: { id: number; label: string };
+};
 
-declare module "vue" {
-  export interface ComponentCustomProperties {
-    $Bus: typeof emitter;
-  }
-}
-
-app.config.globalProperties.$Bus = emitter;
+export const emitter = mitt<Events>();
 ```
 
-## 25. tsx
+## 25. TSX
 
 另一种风格
 
@@ -790,107 +708,52 @@ app.config.globalProperties.$Bus = emitter;
 
 ```ts
 // vite.config.ts
+import { defineConfig } from "vite";
 import vueJsx from "@vitejs/plugin-vue-jsx";
-export default () => {
-  return defineConfig({
-    plugins: [vueJsx()],
-  });
-};
+
+export default defineConfig({
+  plugins: [vueJsx()],
+});
 ```
 
 3. 使用:
 
 ```tsx
-// 1. 直接返回一个渲染函数
-export default function () {
-  return <div>Hello world</div>;
-}
+import { defineComponent, ref } from "vue";
 
-// 2. 使用 optionsApi(使用较少)
-import { defineComponent } from "vue";
 export default defineComponent({
-  data() {
-    return { name: "hello" };
+  name: "CounterButton",
+  props: {
+    title: { type: String, required: true },
   },
-  render() {
-    return <div>{this.name}</div>;
+  emits: {
+    select: (value: number) => Number.isFinite(value),
+  },
+  setup(props, { emit, slots }) {
+    const visible = ref(true);
+    const items = [1, 2, 3];
+
+    return () => (
+      <section>
+        {visible.value ? <h2>{props.title}</h2> : null}
+        <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
+        <button onClick={() => emit("select", 1)}>点击</button>
+        {slots.default?.()}
+      </section>
+    );
   },
 });
-
-// 3. setup函数模式
-import { defineComponent } from "vue";
-export default defineComponent(
-   setup() {
-      return () => <div>Hello world</div>;
-   }
-);
-
-// 示例
-// v-show支持
-// v-if不支持 js三元表达式代替
-// v-for不支持 js数组循环 map
-// v-bind 用{}代替
-//props emit
-// 插槽
-
-// ref在template会自动解包.value 在tsx并不会
-import { defineComponent } from "vue";
-export default defineComponent(
-   setup() {
-      const flag = ref(false);
-      return () => <div v-show={flag}>Hello world</div>;
-   }
-);
-
-// props接受值
-import { ref } from 'vue'
-
-type Props = {
-    title:string
-}
-
-const renderDom = (props:Props) => {
-    return (
-        <>
-            <div>{props.title}</div>
-            <button onClick={clickTap}>点击</button>
-        </>
-    )
-}
-
-const clickTap = () => {
-    console.log('click');
-}
-
-export default renderDom
-
-// Emit派发
-type Props = {
-    title: string
-}
-
-const renderDom = (props: Props,content:any) => {
-    return (
-        <>
-            <div>{props.title}</div>
-            <button onClick={clickTap.bind(this,content)}>点击</button>
-        </>
-    )
-}
-
-const clickTap = (ctx:any) => {
-
-    ctx.emit('on-click',1)
-}
 ```
 
-### bable
+模板会在表达式中自动解包顶层 ref；普通渲染函数和 TSX 表达式不会，因此上例使用 `visible.value`。TSX 可以使用 `v-show` 等由 Vue JSX 插件支持的指令，但条件和列表渲染通常直接使用三元表达式与 `map()`。
+
+### Babel
 
 1. 编译
 2. 转换
 3. 生成
 
-## 26. \*\*v-model深入
+## 26. 深入 v-model
 
 - 数据绑定
 - 监听更新
@@ -898,7 +761,7 @@ const clickTap = (ctx:any) => {
 
 有两个地方会用到 `v-model`：
 
-- 原生表单 `<input>`、`<checkbox>`、`<select>`、`radio`
+- 原生表单控件，例如 `<input>`（包括 checkbox、radio）、`<textarea>` 和 `<select>`
 - 在组件上使用：父子组件双向通信的语法糖 **v-model 在组件上 = props 向下传值 + emit 向上通知**
 
 | 用法                     | 适用场景                         |
@@ -930,7 +793,7 @@ const message = ref("");
 
 ### 生命周期
 
-- `create`
+- `created`
 - `beforeMount`
 - `mounted`
 - `beforeUpdate`
@@ -979,7 +842,9 @@ const vHasShow: Directive<HTMLElement, string> = (el, bingding) => {
   }
 }
 </style>
+```
 
+```vue
 <!-- 自定义拖拽指令 -->
 <template>
   <div v-move class="box">
@@ -989,7 +854,7 @@ const vHasShow: Directive<HTMLElement, string> = (el, bingding) => {
 </template>
 
 <script setup lang="ts">
-import { Directive } from "vue";
+import type { Directive } from "vue";
 const vMove: Directive = {
   mounted(el: HTMLElement) {
     let moveEl = el.firstElementChild as HTMLElement;
@@ -1031,27 +896,28 @@ const vMove: Directive = {
 </style>
 ```
 
+这种指令只能控制界面是否显示，不能作为安全边界。服务端仍必须在每个受保护接口上独立校验身份与权限。
+
 ### 图片懒加载
 
 ```vue
 <template>
   <div>
-    <div v-for="item in arr">
+    <div v-for="item in arr" :key="item">
       <img height="500" :data-index="item" v-lazy="item" width="360" alt="" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from "vue";
 import type { Directive } from "vue";
-const images: Record<string, { default: string }> = import.meta.globEager(
-  "./assets/images/*.*",
-); // vite提供的引用全部图片的方法
-// glob 是懒惰加载
-// globEager 是静态加载
+const images = import.meta.glob<string>("./assets/images/*.*", {
+  eager: true,
+  import: "default",
+});
+// 默认的 import.meta.glob() 返回懒加载函数；eager: true 会生成静态导入。
 
-let arr = Object.values(images).map((v) => v.default);
+const arr = Object.values(images);
 
 let vLazy: Directive<HTMLImageElement, string> = async (el, binding) => {
   let url = await import("./assets/vue.svg");
@@ -1074,50 +940,55 @@ let vLazy: Directive<HTMLImageElement, string> = async (el, binding) => {
 <style scoped lang="less"></style>
 ```
 
-## 28. 自定义Hooks
+## 28. 自定义 Hooks
 
 [Get Started | VueUse](https://vueuse.org/)
 
 主要用来处理复用代码逻辑的一些封装
 
 ```ts
-// 案例：图片转base64
+// 案例：图片转 Base64
 import { onMounted } from "vue";
 
-type Options = {
-  el: string;
-};
-
-type Return = {
-  Baseurl: string | null;
-};
-export default function (option: Options): Promise<Return> {
-  return new Promise((resolve) => {
+export function useImageBase64(selector: string): Promise<string> {
+  return new Promise((resolve, reject) => {
     onMounted(() => {
-      const file: HTMLImageElement = document.querySelector(
-        option.el,
-      ) as HTMLImageElement;
-      file.onload = (): void => {
-        resolve({
-          Baseurl: toBase64(file),
-        });
+      const image = document.querySelector<HTMLImageElement>(selector);
+      if (!image) {
+        reject(new Error(`未找到图片：${selector}`));
+        return;
+      }
+
+      const convert = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("当前环境不支持 Canvas 2D");
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          context.drawImage(image, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        } catch (error) {
+          reject(error);
+        }
       };
+
+      if (image.complete && image.naturalWidth > 0) convert();
+      else {
+        image.addEventListener("load", convert, { once: true });
+        image.addEventListener("error", () => reject(new Error("图片加载失败")), {
+          once: true,
+        });
+      }
     });
-
-    const toBase64 = (el: HTMLImageElement): string => {
-      const canvas: HTMLCanvasElement = document.createElement("canvas");
-      const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
-      canvas.width = el.width;
-      canvas.height = el.height;
-      ctx.drawImage(el, 0, 0, canvas.width, canvas.height);
-      console.log(el.width);
-
-      return canvas.toDataURL("image/png");
-    };
   });
 }
+```
 
-// 案例：自定义指令 + hooks，实现一个监听元素变化的hook
+跨源图片若没有正确的 CORS 响应头，会污染画布，使 `toDataURL()` 抛出安全异常。
+
+```ts
+// 案例：自定义指令 + composable，实现元素尺寸监听
 
 // 主要会用到一个新的API resizeObserver 兼容性一般 可以做polyfill 但是他可以监听元素的变化 执行回调函数 返回 contentRect 里面有变化之后的宽高。
 
@@ -1125,7 +996,7 @@ export default function (option: Options): Promise<Return> {
 // 2.用vite打包成库
 // 3. 发布npm
 
-import { App, defineComponent, onMounted } from "vue";
+import type { App } from "vue";
 
 function useResize(
   el: HTMLElement,
@@ -1139,19 +1010,25 @@ function useResize(
     }
   });
   resize.observe(el);
+  return resize;
 }
+
+const observers = new WeakMap<Element, ResizeObserver>();
 
 const install = (app: App) => {
   app.directive("resize", {
     mounted(el, binding) {
-      useResize(el, binding.value);
+      const observer = useResize(el, binding.value);
+      observers.set(el, observer);
+    },
+    unmounted(el) {
+      observers.get(el)?.disconnect();
+      observers.delete(el);
     },
   });
 };
 
-useResize.install = install;
-
-export default useResize;
+export default Object.assign(useResize, { install });
 ```
 
 ```ts
@@ -1163,6 +1040,7 @@ export default defineConfig({
     lib: {
       entry: "src/index.ts",
       name: "useResize",
+      formats: ["es", "umd"],
     },
     rollupOptions: {
       // 确保外部化处理那些你不想打包进库的依赖
@@ -1170,7 +1048,7 @@ export default defineConfig({
       output: {
         // 在 UMD 构建模式下为这些外部化的依赖提供一个全局变量
         globals: {
-          useResize: "useResize",
+          vue: "Vue",
         },
       },
     },
@@ -1180,8 +1058,13 @@ export default defineConfig({
 
 ```ts
 // index.d.ts
+import type { App } from "vue";
+
 declare const useResize: {
-  (el: HTMLElement, callback: Function): void;
+  (
+    el: HTMLElement,
+    callback: (rect: DOMRectReadOnly, observer: ResizeObserver) => void,
+  ): ResizeObserver;
   install: (app: App) => void;
 };
 
@@ -1199,7 +1082,7 @@ app.config.globalProperties.$env = "dev"; // 全局变量
 // 全局函数
 app.config.globalProperties.$filters = {
   format<T>(str: T) {
-    return str + "格式化";
+    return `${String(str)}格式化`;
   },
 };
 app.mount("#app");
@@ -1221,15 +1104,15 @@ declare module "vue" {
 }
 ```
 
-## 30. 编写vue3插件
+## 30. 编写 Vue 3 插件
 
 插件支持两种形式：
 
 1. 函数插件
 2. 对象插件
 
-```ts
-// Loading.Vue
+```vue
+<!-- Loading.vue -->
 <template>
     <div v-if="isShow" class="loading">
         <div class="loading-content">Loading...</div>
@@ -1270,90 +1153,90 @@ defineExpose({
     }
 }
 </style>
+```
 
-
+```ts
 // Loading.ts
-import { createVNode, render, VNode, App } from "vue";
+import { createVNode, render, type App, type VNode } from "vue";
 import Loading from "./index.vue";
 
 export default {
   // 规定 需要有个install 方法
   install(app: App) {
-    //createVNode vue提供的底层方法 可以给我们组件创建一个虚拟DOM 也就是Vnode
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+
+    // createVNode 创建 VNode；render 把它挂载到独立容器中
     const vnode: VNode = createVNode(Loading);
-    //render 把我们的Vnode 生成真实DOM 并且挂载到指定节点
-    render(vnode, document.body);
-    // Vue 提供的全局配置 可以自定义
+    vnode.appContext = app._context;
+    render(vnode, container);
     app.config.globalProperties.$loading = {
       show: () => vnode.component?.exposed?.show(),
       hide: () => vnode.component?.exposed?.hide(),
     };
   },
 };
+```
 
-
+```ts
 // main.ts
-import Loading from './components/loading'
+import { createApp } from "vue";
+import App from "./App.vue";
+import Loading from "./components/loading";
 
 
-let app = createApp(App)
+type LoadingService = {
+  show: () => void;
+  hide: () => void;
+};
 
-app.use(Loading)
-
-
-type Lod = {
-    show: () => void,
-    hide: () => void
-}
-//编写ts loading 声明文件放置报错 和 智能提示
-declare module '@vue/runtime-core' {
-    export interface ComponentCustomProperties {
-        $loading: Lod
-    }
+declare module "vue" {
+  interface ComponentCustomProperties {
+    $loading: LoadingService;
+  }
 }
 
-app.mount('#app')
+createApp(App).use(Loading).mount("#app");
 ```
 
 ## 31. 组件库
 
-1. [一个 Vue 3 UI 框架 | Element Plus](https://element-plus.org/zh-CN/) 首选setup语法糖
-2. [Ant Design Vue](https://antdv.com/components/overview-cn) setup函数
-3. [View Design](https://iviewui.com/) optionApi模式 JS
-4. [Vant](https://vant-ui.github.io/vant/#/zh-CN) 移动端
+1. [Element Plus](https://element-plus.org/zh-CN/)：面向 Vue 3 的桌面端组件库
+2. [Ant Design Vue](https://antdv.com/components/overview-cn)：Ant Design 的 Vue 实现
+3. [View UI Plus](https://www.iviewui.com/)：面向 Vue 3 的组件库
+4. [Vant](https://vant-ui.github.io/vant/#/zh-CN)：移动端组件库
 
-```ts
-// element-plus有volar插件支持
+这些组件库并不强制业务代码使用某一种 API 风格；应以各自当前版本的安装、按需引入和类型声明文档为准。
+
+```json
 {
   "compilerOptions": {
-    // ...
     "types": ["element-plus/global"]
   }
 }
 ```
 
-## 32. 详解scoped 样式穿透
+## 32. scoped 与样式穿透
 
-主要是用于修改很多vue常用的组件库(elmnent, vant，Ant Desigin)，虽然配好了样式但是还是需要更改其他的样式
-就需要用到样式穿透。
+`scoped` 用于限制单文件组件样式的匹配范围；当确实需要从父组件选中子组件内部节点（例如定制第三方组件库）时，可以使用深度选择器，但应尽量依赖组件库公开的主题变量和样式 API，避免绑定其内部 DOM 结构。
 
 ### scoped
 
-1. 给HTML的DOM节点加一个不重复data属性(形如：`data-v-123`)来表示他的唯一性
-2. 在每句css选择器的末尾（编译后的生成的css语句）加一个当前组件的data属性选择器（如`[data-v-123]`）来私有化样式
-3. 如果组件内部包含有其他组件，只会给其他组件的最外层标签加上当前组件的data属性
+1. 编译器会给当前组件模板中的元素添加形如 `data-v-xxxx` 的作用域属性。
+2. 同一个 `<style scoped>` 中的选择器也会被改写，使其只匹配带对应属性的元素。
+3. 子组件的根元素会同时受到父组件作用域样式与子组件自身作用域样式的影响，便于父组件控制布局；普通选择器不会继续匹配子组件更深层的内部节点。
 
 ### 样式穿透
 
-`:deep()`：它的作用就是用来改变属性选择器的位置
+`:deep(inner-selector)` 会让其中的选择器不再附加当前组件的作用域属性，从而匹配后代组件内部节点；外围选择器仍受当前组件作用域限制。
 
-## 33. css style 完整新特性（Vue 3.2）
+## 33. CSS 样式新特性（Vue 3.2）
 
 ### 插槽选择器
 
 默认情况下，作用域样式不会影响到`<slot/>`渲染出来的内容，因为它们被认为是父组件所持有并传递进来的。
 
-```css
+```html
 <style scoped>
  :slotted(.a) {
     color:red
@@ -1363,19 +1246,17 @@ app.mount('#app')
 
 ### 全局选择器
 
-```css
-/* 通常都是新建一个style 标签 不加scoped */
+```html
+<!-- 通常新建一个不带 scoped 的 style 标签 -->
 <style>
  div{
      color:red
  }
 </style>
+```
 
-<style lang="less" scoped>
-
-</style>
-
-/* 效果等同于上面  */
+```html
+<!-- 也可以只让某个选择器成为全局选择器 -->
 <style lang="less" scoped>
 :global(div){
     color:red
@@ -1400,7 +1281,9 @@ const red = ref<string>("red");
   color: v-bind(red);
 }
 </style>
+```
 
+```vue
 <!-- 对象形式 -->
 <template>
   <div class="div">aaa</div>
@@ -1422,7 +1305,7 @@ const red = ref({
 </style>
 ```
 
-### CSS module
+### CSS Modules
 
 ```vue
 <template>
@@ -1437,7 +1320,7 @@ const red = ref({
 </style>
 ```
 
-### 34. \*\*vue3集成Tailwindcss 4
+## 34. Vue 3 集成 Tailwind CSS 4
 
 使用方法：
 
@@ -1456,16 +1339,18 @@ export default defineConfig({
 
 4. 导入 Tailwind CSS：在你的 CSS 文件中添加一个`@import`导入 Tailwind CSS 的语句。`@import "tailwindcss";`
 
-5. 可以使用 Prettier 进行班级排序
+5. 如果要用 Prettier 自动排序 Tailwind 工具类，需要另外安装并配置 `prettier-plugin-tailwindcss`；Prettier 本身不会自动识别并排序这些类名。
 
-## 35. nextTick EventLoop
+## 35. nextTick 与 Event Loop
 
 ### EventLoop
 
-1. 宏任务
-   script(整体代码)、setTimeout、setInterval、UI交互事件、postMessage、Ajax
-2. 微任务
-   Promise.then catch finally、MutaionObserver、process.nextTick(Node.js 环境)
+在浏览器规范中通常称为“任务（task）”与“微任务（microtask）”；“宏任务”是常见教学用语，不是 HTML 标准中的正式队列名称。
+
+1. 任务来源示例：初始脚本、定时器回调、用户交互回调、`postMessage` 回调，以及网络请求完成后排入的回调任务。
+2. 微任务示例：Promise reaction（`then`/`catch`/`finally`）、`queueMicrotask()` 和 `MutationObserver` 回调。
+
+Node.js 还提供 `process.nextTick()`。它使用 Node 自己的 next-tick 队列，不应直接等同于浏览器微任务；Node 会在事件循环的特定边界优先清空该队列，再处理 Promise 微任务。
    ![alt text](/assert/vue3-review/rule.png)
 
 ```vue
@@ -1513,9 +1398,9 @@ console.log(0);
 
 ### nextTick
 
-vue更新DOM是异步的，而数据更新是同步的。nextTick()方法可以确保回调在DOM更新之后执行。当我们操作DOM的时候发现数据读取的是上次的,就需要使用`nextIick`
+响应式状态赋值会同步改变 JavaScript 中的数据，但 Vue 会把由此产生的组件 DOM 更新缓冲到之后的更新周期，并对同一轮中的多次修改去重。`nextTick()` 返回的 Promise 会在当前待处理的 Vue DOM 更新完成后兑现，适合在修改状态后读取更新后的组件 DOM。
 
-nextTIck的原理就是把我们的代码放到一个promise去执行。
+当前实现通常借助 Promise 微任务调度刷新，但 `nextTick()` 的语义是“等待 Vue 当前刷新完成”，不应把它简单理解为任意代码套一层 Promise；内部调度策略也不是公共 API 保证。
 
 ```vue
 <template>
@@ -1542,20 +1427,13 @@ const change = async () => {
 <style scoped></style>
 ```
 
-> 如何理解tick呢？
+> 如何理解 tick？
 
-例如我们显示器是60FPS，那浏览器绘制一帧就是1000 / 60 ≈ 16.6ms。那浏览器这一帧率做了什么？
+这里的 tick 指一次异步调度边界，并不等同于显示器的一帧。浏览器会从任务队列取任务，任务结束后执行微任务检查点，并在合适的时机进行渲染；渲染机会中通常会运行 `requestAnimationFrame` 回调，再完成样式、布局、绘制与合成。定时器和用户事件并不保证每一帧都执行，`requestIdleCallback` 也只会在浏览器判断存在空闲时间时运行。
 
-1. 处理用户的事件，就是event 例如 click input change 等。
-2. 执行定时器任务
-3. 执行`requestAnimationFrame`
-4. 执行dom 的回流与重绘
-5. 计算更新图层的绘制指令
-6. 绘制指令合并主线程 如果有空余时间会执行`requestidlecallback`
+## 36. Vue 3 移动端开发
 
-## 36. vue3开发移动端
-
-### Android IOS
+### Android 与 iOS
 
 [ionic framework](https://ionicframework.com/)
 
@@ -1569,48 +1447,68 @@ const change = async () => {
 
 2. 圣杯布局：在CSS中，圣杯布局是指两边盒子宽度固定，中间盒子自适应的三栏布局，其中，中间栏放到文档流前面，保证先行渲染；
 
-- `vw vh`：`vw`和`vh`是视口宽度和视口高度的百分比单位，`vw`表示视口宽度的百分比，`vh`表示视口高度的百分比。相对于视口
-- 百分比：相对于父元素宽度的百分比，百分比单位是`%`。
-- PostCSS：PostCSS 的主要作用是转换 CSS 代码，就是CSS界的Babel
+- `vw` 与 `vh`：分别等于初始包含块宽度、高度的 1%。移动端还可根据地址栏伸缩行为选择 `svh`、`lvh`、`dvh` 等动态视口单位。
+- 百分比：参照对象取决于具体 CSS 属性，并不总是父元素宽度。例如 `width` 百分比通常相对包含块宽度，而 `height` 百分比需要结合包含块高度规则判断。
+- PostCSS：一个用 JavaScript 插件解析并转换 CSS 的工具平台。它可以完成前缀、语法转换、检查等任务，但具体行为由所启用的插件决定。
 
 [Vite的PostCSS](https://cn.vitejs.dev/config/shared-options.html#css-postcss)
 
 ```ts
-// 编写的px转vw插件
-import type { Options } from "./type";
+// 一个保守的 px 转 vw 教学示例
 import type { Plugin } from "postcss";
-const defaultOptions = {
-  viewPortWidth: 375,
-  mediaQuery: false,
-  unitToConvert: "px",
+import valueParser from "postcss-value-parser";
+
+type Options = {
+  viewportWidth?: number;
+  minPixelValue?: number;
+  mediaQuery?: boolean;
 };
-export const pxToViewport = (options: Options = defaultOptions): Plugin => {
-  const opt = Object.assign({}, defaultOptions, options);
+
+const defaultOptions: Required<Options> = {
+  viewportWidth: 375,
+  minPixelValue: 1,
+  mediaQuery: false,
+};
+
+export const pxToViewport = (options: Options = {}): Plugin => {
+  const config = { ...defaultOptions, ...options };
   return {
     postcssPlugin: "postcss-px-to-viewport",
-    //css节点都会经过这个钩子
-    Declaration(node) {
-      const value = node.value;
-      //匹配到px 转换成vw
-      if (value.includes(opt.unitToConvert)) {
-        const num = parseFloat(value);
-        const transformValue = (num / opt.viewPortWidth) * 100;
-        node.value = `${transformValue.toFixed(2)}vw`; //转换之后的值
-      }
+    Declaration(declaration) {
+      const parent = declaration.parent;
+      if (
+        !config.mediaQuery &&
+        parent?.type === "atrule" &&
+        parent.name.toLowerCase() === "media"
+      ) return;
+
+      const parsed = valueParser(declaration.value);
+      parsed.walk((node) => {
+        if (node.type !== "word") return;
+        const match = /^(-?(?:\d+|\d*\.\d+))px$/i.exec(node.value);
+        if (!match) return;
+
+        const pixels = Number(match[1]);
+        if (pixels === 0) node.value = "0";
+        else if (Math.abs(pixels) > config.minPixelValue) {
+          node.value = `${((pixels / config.viewportWidth) * 100).toFixed(4)}vw`;
+        }
+      });
+      declaration.value = parsed.toString();
     },
   };
 };
 ```
 
-## 37. unocss原子化
+直接对整段声明使用 `parseFloat()` 会破坏 `margin: 8px 16px`、`calc()`、阴影等多值表达式，也可能误改不应转换的 1px 边框。生产项目应明确排除规则、设计稿宽度和媒体查询策略，并优先使用经过测试的现成插件。
+
+## 37. UnoCSS 原子化
 
 [unocss官网](https://unocss.dev/)
 
 > UnoCSS 和 Tailwind CSS 的主要区别
 
-Tailwind CSS is a PostCSS plugin, while UnoCSS is an isomorphic engine with a collection of first-class integrations with build tools (including a PostCSS plugin). This means UnoCSS can be much more flexible to be used in different places (for example, CDN Runtime, which generates CSS on the fly) and have deep integrations with build tools to provide better HMR, performance, and developer experience (for example, the Inspector).
-
-Technical trade-offs aside, UnoCSS is also designed to be fully extensible and customizable, while Tailwind CSS is more opinionated. Building a custom design system (or design tokens) on top of Tailwind CSS can be hard, and you can't really move away from the Tailwind CSS's conventions. With UnoCSS, you can build pretty much anything you want with full control. For example, we implemented the whole Tailwind CSS compatible utilities within a single preset, and there are a lot of awesome community presets implemented with other interesting philosophies.
+两者都能按源码中出现的类名生成工具类 CSS。UnoCSS 更像可组合的即时原子化引擎，通过 presets、rules、shortcuts 和多种构建工具集成进行扩展；Tailwind CSS 提供更统一的设计系统约定、官方工具类和生态。Tailwind CSS 4 同时提供第一方 PostCSS 插件与 Vite 插件，因此不能再简单概括为“Tailwind 只是 PostCSS 插件”。选择时应比较团队约定、生态需求、构建集成和可定制程度。
 
 > 什么是css原子化？
 
@@ -1656,7 +1554,7 @@ export default defineConfig({
 import "virtual:uno.css";
 ```
 
-## 38. 函数式编程 h函数 <Badge type="danger" text="了解" />
+## 38. 函数式编程与 h 函数 <Badge type="danger" text="了解" />
 
 vue的编程风格：
 
@@ -1664,183 +1562,158 @@ vue的编程风格：
 2. `JSX`编写风格
 3. 函数式编程 h函数
 
-h函数源码的主要实现为：`createVNode`，h函数的优势是跳过了模板的编译：parser --> ast --> transform --> js api --> render。缺点就是学习成本高，vue3使用h函数很少。
+`h()` 是创建 VNode 的运行时辅助函数，API 比直接调用底层 `createVNode()` 更适合手写渲染函数。手写渲染函数不需要模板编译，但构建工具通常会预编译 `.vue` 模板，因此普通生产构建也不会在浏览器中重复执行完整模板编译。渲染函数适合高度动态、用 JavaScript 表达更直接的结构，代价是可读性和模板优化信息可能不如模板直观。
 
-## 39. vue3 vite Electron 开发桌面程序
+## 39. 使用 Vue 3、Vite 与 Electron 开发桌面程序
 
 - [Electron](https://www.electronjs.org/zh/)
 - [electron-vite](https://cn.electron-vite.org/)
 
-## 40. vue3.3 编译宏
+Electron 应用通常分为三个环境：主进程负责窗口与系统 API，渲染进程承载 Vue 页面，预加载脚本通过受控桥接暴露必要能力。Vite/electron-vite 负责开发服务和主进程、预加载、渲染进程的构建，但不会替代 Electron 的安全边界设计。
 
-1. `defineProps` 父子组件传参
+最小原则如下：
+
+1. 保持 `contextIsolation: true`，普通渲染页面不要启用 `nodeIntegration`。
+2. 在 preload 中用 `contextBridge.exposeInMainWorld()` 暴露小而明确的 API，不要直接暴露整个 `ipcRenderer`。
+3. 主进程为每个 IPC 通道校验参数与调用来源；不要把网页内容当作可信输入。
+4. 只加载可信的本地资源或受控 URL，并配置内容安全策略。打包、签名与自动更新还需要按目标操作系统单独配置。
+
+```ts
+// preload.ts
+import { contextBridge, ipcRenderer } from "electron";
+
+contextBridge.exposeInMainWorld("desktop", {
+  getAppVersion: () => ipcRenderer.invoke("app:get-version") as Promise<string>,
+});
+```
+
+## 40. Vue 编译宏
+
+1. `defineProps`：声明组件接收的 props。运行时对象声明和类型声明二选一，同一组件中不要重复调用。
 
 ```vue
-// 父组件
-<template>
-  <div>
-    <Child name="xiaoman"></Child>
-  </div>
-</template>
-<script lang="ts" setup>
-import Child from "./views/child.vue";
-</script>
-<style></style>
-
-<!-- 子组件使用defineProps接受值 -->
-<template>
-  <div>
-    {{ name }}
-  </div>
-</template>
-<script lang="ts" setup>
-defineProps({
-  name: String,
-});
-</script>
-
-<!-- 使用TS字面量模式 -->
-<template>
-  <div>
-    {{ name }}
-  </div>
-</template>
-<script lang="ts" setup>
+<!-- Child.vue -->
+<script setup lang="ts">
 defineProps<{
   name: string;
 }>();
 </script>
 
-<!-- Vue3.3 新增 defineProps 可以接受泛型 -->
-<Child :name="['xiaoman']"></Child>
-<!-- //-------------子组件----------------- -->
 <template>
-  <div>
-    {{ name }}
-  </div>
+  <div>{{ name }}</div>
 </template>
-<script generic="T" lang="ts" setup>
-defineProps<{
-  name: T[];
-}>();
-</script>
 ```
 
-- `defineEmits` 子组件触发事件
+```vue
+<!-- Parent.vue -->
+<script setup lang="ts">
+import Child from "./views/Child.vue";
+</script>
+
+<template>
+  <Child name="xiaoman" />
+</template>
+```
+
+Vue 3.3 起，`<script setup>` 的 `generic` 属性可以声明泛型组件：
 
 ```vue
-<!-- 父组件 -->
-<template>
-  <div>
-    <Child @send="getName"></Child>
-  </div>
-</template>
-<script lang="ts" setup>
-import Child from "./views/child.vue";
-const getName = (name: string) => {
-  console.log(name);
-};
-</script>
-<style></style>
-
-<!-- 子组件常规方式派发Emit -->
-<template>
-  <div>
-    <button @click="send">派发事件</button>
-  </div>
-</template>
-<script lang="ts" setup>
-const emit = defineEmits(["send"]);
-const send = () => {
-  // 通过派发事件，将数据传递给父组件
-  emit("send", "我是子组件的数据");
-};
+<script setup lang="ts" generic="T">
+defineProps<{ items: T[] }>();
 </script>
 
-<!-- 子组件TS字面量模式派发 -->
 <template>
-  <div>
-    <button @click="send">派发事件</button>
-  </div>
+  <div v-for="(item, index) in items" :key="index">{{ item }}</div>
 </template>
-<script lang="ts" setup>
-const emit = defineEmits<{
-  (event: "send", name: string): void;
-}>();
-const send = () => {
-  // 通过派发事件，将数据传递给父组件
-  emit("send", "我是子组件的数据");
-};
-</script>
-<!-- Vue3.3 新写法更简短 -->
-<template>
-  <div>
-    <button @click="send">派发事件</button>
-  </div>
-</template>
-<script lang="ts" setup>
+```
+
+2. `defineEmits`：声明组件可触发的事件并返回 `emit` 函数。Vue 3.3 起可使用更简洁的具名元组类型语法。
+
+```vue
+<!-- Child.vue -->
+<script setup lang="ts">
 const emit = defineEmits<{
   send: [name: string];
 }>();
-const send = () => {
-  // 通过派发事件，将数据传递给父组件
-  emit("send", "我是子组件的数据");
-};
 </script>
+
+<template>
+  <button @click="emit('send', '我是子组件的数据')">派发事件</button>
+</template>
 ```
 
-- `defineOptions` 主要是用来定义 Options API 的选项，常用的就是定义name在seutp语法糖模式发现name不好定义了需要在开启一个script自定义name现在有了defineOptions就可以随意定义name了。 vue3.3内置
+```vue
+<!-- Parent.vue -->
+<script setup lang="ts">
+import Child from "./views/Child.vue";
+
+const getName = (name: string) => console.log(name);
+</script>
+
+<template>
+  <Child @send="getName" />
+</template>
+```
+
+- `defineOptions` 用于在 `<script setup>` 中声明 `name`、`inheritAttrs` 等组件选项，Vue 3.3 起内置，无需再增加一个普通 `<script>` 块。
 
 ```ts
 defineOptions({ name: "Child", inheritAttrs: false });
 ```
 
-- `defineSlots` 子组件 defineSlots只做声明不做实现 同时约束slot类 型
+- `defineSlots` 用于声明并约束插槽名称及插槽 props 类型。它不接收运行时参数，也不会替你渲染插槽。
 
-- `defineModel` vue3.5已经正式启用，用法就是v-model直接绑定变量到组件上，不用处理事件和数据了。
+- `defineModel` 在 Vue 3.4 起稳定，用来声明组件的 `v-model` prop 与对应的 `update:` 事件，并返回可读写的 model ref。它简化了样板代码，但仍应明确默认模型名、自定义参数、修饰符与默认值的同步语义。
 
 ## 41. 环境变量
 
-主要作用就是让开发者区分不同的运行环境，来实现兼容开发和生产环境。
-Vite 在一个特殊的`import.meta.env`对象上暴露环境变量。这里有一些在所有情况下都可以使用的内建变量。需要注意的一点就是，这个环境变量不能使用动态赋值`import.meta.env[key]`。因为这些环境变量在打包的时候是会被硬编码的通过`JSON.stringify`注入浏览器。
+Vite 在 `import.meta.env` 上暴露内建常量和允许暴露给客户端的自定义环境变量。这些引用会在开发或构建过程中由 Vite 处理，因此业务代码应使用静态属性访问（例如 `import.meta.env.MODE`），不能依赖 `import.meta.env[key]` 被静态替换。
 
-```json
-{
-"BASE_URL":"/", //部署时的URL前缀
-"MODE":"development", //运行模式
-"DEV":true,"  //是否在dev环境
-PROD":false, //是否是build 环境
-"SSR":false //是否是SSR 服务端渲染模式
-}
+```ts
+const env = {
+  BASE_URL: import.meta.env.BASE_URL, // 部署基础路径
+  MODE: import.meta.env.MODE,         // 当前模式名
+  DEV: import.meta.env.DEV,           // 是否以开发模式运行
+  PROD: import.meta.env.PROD,         // 是否以生产模式运行
+  SSR: import.meta.env.SSR,           // 是否在服务端执行
+};
 ```
 
 > 如何自定义环境变量？
 
-- 在根目录下创建`.env`文件，里面可以定义环境变量
+- 在项目根目录创建 `.env`、`.env.local`、`.env.[mode]` 或 `.env.[mode].local`。
+- 只有以 `VITE_`（或 `envPrefix` 自定义前缀）开头的变量才会暴露给客户端源码，而且值均为字符串。任何暴露给客户端的值都会进入产物，不能存放密钥。
+- 修改 `.env` 后需要重启开发服务器。模式专用文件优先级高于通用文件，进程启动时已经存在的环境变量优先级更高。
 
-## 42. webpack构建Vue3项目
+## 42. 使用 webpack 构建 Vue 3 项目
 
-略
+Vue 官方脚手架默认采用 Vite，但 Vue 3 也可以由 webpack 构建。核心配置通常包括 `vue-loader`、`VueLoaderPlugin`、TypeScript/CSS 处理规则、开发服务器与生产拆包。具体 loader/plugin 版本必须与 webpack 主版本兼容；除非维护既有 webpack 工程，新项目通常优先采用 Vue 官方的 `create-vue` 与 Vite。
 
-## 43. vue3性能优化
+## 43. Vue 3 性能优化
 
 - `FCP (First Contentful Paint)`：首次内容绘制的时间，浏览器第一次绘制DOM相关的内容，也是用户第一次看到页面内容的时间。
 - `Speed Index`: 页面各个可见部分的显示平均时间，当我们的页面上存在轮播图或者需要从后端获取内容加载时，这个数据会被影响到。
-- `LCP (Largest Contentful Paint)`：最大内容绘制时间，页面最大的元素绘制完成的时间。
-- `TTI(Time to Interactive)`：从页面开始渲染到用户可以与页面进行交互的时间，内容必须渲染完毕，交互元素绑定的事件已经注册完成。
-- `TBT(Total Blocking Time)`：记录了首次内容绘制到用户可交互之间的时间，这段时间内，主进程被阻塞，会阻碍用户的交互，页面点击无反应。
+- `LCP (Largest Contentful Paint)`：视口内当前最大内容元素完成绘制的时间，是 Core Web Vitals 指标之一。
+- `TTI (Time to Interactive)`：历史实验室指标，用来估计页面达到可靠交互状态的时间；它不是 Core Web Vitals，当前 Lighthouse 报告已不再把它作为主要指标。
+- `TBT (Total Blocking Time)`：实验室指标，累计 FCP 之后各个长任务超过 50ms 的阻塞部分，用于反映主线程被长任务占用的程度。
 - `CLS(Cumulative Layout Shift)`：计算布局偏移值得分，会比较两次渲染帧的内容偏移情况，可能导致用户想点击A按钮，但下一帧中，A按钮被挤到旁边，导致用户实际点击了B按钮。
 
 ### 代码分析
 
-由于我们使用的是vite vite打包是基于rollup的我们可以使用 rollup的插件。安装：`npm install rollup-plugin-visualizer`
+Vite 7 的生产构建默认基于 Rollup，可以使用 `rollup-plugin-visualizer` 分析产物；Vite 8 已切换到基于 Rolldown 的构建系统。常用 Rollup 插件多数仍可兼容，但迁移时应检查插件兼容性。
 
 ```ts
 // vite.config.ts
-import { visualizer } from 'rollup-plugin-visualizer';
-plugins: [vue(), vueJsx(),visualizer({
-      open:true
- })],
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import vueJsx from "@vitejs/plugin-vue-jsx";
+import { visualizer } from "rollup-plugin-visualizer";
+
+const analyze = process.env.VITE_ANALYZE === "1";
+
+export default defineConfig({
+  plugins: [vue(), vueJsx(), analyze && visualizer({ open: true })],
+});
 ```
 
 然后进行`npm run build`打包。
@@ -1849,14 +1722,20 @@ plugins: [vue(), vueJsx(),visualizer({
 
 ```ts
 // vite.config.ts
-build:{
-  chunkSizeWarningLimit:2000,
-  cssCodeSplit:true, //css 拆分
-  sourcemap:false, //不生成sourcemap
-  minify:false, //是否禁用最小化混淆，esbuild打包速度最快，terser打包体积最小。
-  assetsInlineLimit:5000 //小于该值 图片将打包成Base64
-},
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  build: {
+    chunkSizeWarningLimit: 1000, // 只调整警告阈值，不会让产物自动变小
+    cssCodeSplit: true,
+    sourcemap: false,
+    minify: true,
+    assetsInlineLimit: 4096,
+  },
+});
 ```
+
+`minify: false` 会关闭压缩，通常增大生产产物，不能当作性能优化。Vite 7 默认使用 esbuild 压缩客户端产物；Vite 8 使用 Oxc minifier。若需要更细的兼容或压缩控制，应按对应 Vite 大版本查阅 `build.minify` 配置，而不是依赖旧版工具结论。
 
 ### PWA离线存储技术
 
@@ -1864,17 +1743,20 @@ build:{
 
 ```ts
 // vite.config.ts
-import { VitePWA } from 'vite-plugin-pwa'
-plugins: [vue(),VitePWA(), vueJsx(),visualizer({
-      open:true
-})],
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import { VitePWA } from "vite-plugin-pwa";
+
+export default defineConfig({
+  plugins: [vue(), VitePWA()],
+});
 ```
 
-PWA 技术的出现就是让web网页无限接近于Native 应用
+PWA 是一组渐进增强能力，可以让 Web 应用在满足条件的平台上获得安装、离线访问、后台能力等体验，但它仍受浏览器、操作系统、权限和 Web 安全模型限制，不能简单等同于原生应用。
 
 1. 可以添加到主屏幕，利用manifest实现
 2. 可以实现离线缓存，利用service worker实现
-3. 可以发送通知，利用service worker实现
+3. 在获得用户授权且平台支持时，可结合 Push API、Notifications API 与 service worker 接收并展示推送通知。
 
 ```ts
 // 配置示例
@@ -1883,8 +1765,8 @@ VitePWA({
     cacheId: "aaa", //缓存名称
     runtimeCaching: [
       {
-        urlPattern: /.*\.js.*/, //缓存文件
-        handler: "StaleWhileRevalidate", //重新验证时失效
+        urlPattern: /\.js(?:\?.*)?$/, // 匹配 JavaScript 请求
+        handler: "StaleWhileRevalidate", // 先用缓存，同时在后台更新
         options: {
           cacheName: "aaa-js", //缓存js，名称
           expiration: {
@@ -1902,25 +1784,33 @@ VitePWA({
 
 - 图片懒加载
 
-```vue
-import lazyPlugin from 'vue3-lazy'
-
-<img v-lazy="user.avatar" />
+```html
+<img
+  src="/avatars/user.webp"
+  loading="lazy"
+  width="320"
+  height="320"
+  alt="用户头像"
+/>
 ```
 
+浏览器原生 `loading="lazy"` 适合大多数非首屏图片。首屏 LCP 图片通常不应懒加载，并应预留宽高以减少布局偏移；需要占位图、错误重试或精细进入视口策略时，再使用 `IntersectionObserver` 或经过维护的 Vue 组件。
+
 - 虚拟列表
-- 多线程 使用`new Worker`创建。worker脚本与主进程的脚本必须遵守同源限制，所在的路径协议、域名、端口号三者需要相同。
-- VueUse 库已经集成了 webWorker
+- Web Worker 可用 `new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })` 创建。Worker 不共享主线程 DOM；构造入口通常受同源与 CSP 约束，而其内部网络请求仍按 Fetch/CORS 规则处理。
+- VueUse 提供 `useWebWorker`、`useWebWorkerFn` 等 composable，但底层限制仍与浏览器 Worker 一致。
 - 防抖节流
 
-## 44. Vue3 Web Components
+## 44. Vue 3 与 Web Components
 
 > 什么是 Web Components
 
-`Web Components`提供了基于原生支持的、对视图层的封装能力，可以让单个组件相关的javaScript、css、html模板运行在以html标签为界限的局部环境中，不会影响到全局，组件间也不会相互影响。再简单来说：就是提供了我们自定义标签的能力，并且提供了标签内完整的生命周期。
+Web Components 是 Custom Elements、Shadow DOM、HTML Templates 等浏览器能力的统称。Custom Elements 提供自定义标签及生命周期；Shadow DOM 可选地提供 DOM 与样式封装；`<template>` 用于声明惰性的可克隆结构。只有显式使用 Shadow DOM 时才具备相应隔离，而且继承属性、CSS 自定义属性和外部 API 仍可能跨越边界，不能笼统地说组件“完全互不影响”。
 
 ```js
 class Btn extends HTMLElement {
+  static observedAttributes = ["label"];
+
   constructor() {
     //调用super 来建立正确的原型链继承关系
     super();
@@ -1931,9 +1821,8 @@ class Btn extends HTMLElement {
       "height:200px;width:200px;border:1px solid #ccc;background:yellow",
     );
     //表示 shadow DOM 子树的根节点
-    const shaDow = this.attachShadow({ mode: "open" });
-
-    shaDow.appendChild(this.p);
+    const shadow = this.attachShadow({ mode: "open" });
+    shadow.appendChild(p);
   }
 
   h(el) {
@@ -1958,18 +1847,22 @@ class Btn extends HTMLElement {
     console.log("333");
   }
   //当自定义元素的一个属性被增加、移除或更改时被调用
-  attributeChangedCallback() {
-    console.log("444");
+  attributeChangedCallback(name, oldValue, newValue) {
+    console.log(name, oldValue, newValue);
   }
 }
 
-window.customElements.define("aaa", Btn);
+window.customElements.define("x-demo-button", Btn);
 ```
+
+自定义元素名称必须包含连字符。`attributeChangedCallback` 只会为 `observedAttributes` 声明的属性调用。
 
 template 模式
 
 ```js
 class Btn extends HTMLElement {
+  static observedAttributes = ["label"];
+
   constructor() {
     //调用super 来建立正确的原型链继承关系
     super();
@@ -2012,8 +1905,8 @@ class Btn extends HTMLElement {
     console.log("我被移动了！！！嗷呜");
   }
   //当自定义元素的一个属性被增加、移除或更改时被调用
-  attributeChangedCallback() {
-    console.log("我被改变了！！！嗷呜");
+  attributeChangedCallback(name, oldValue, newValue) {
+    console.log(name, oldValue, newValue);
   }
 }
 
@@ -2038,55 +1931,51 @@ window.customElements.define("xiao-man", Btn);
 </html>
 ```
 
-### 在vue中使用
+### 在 Vue 中使用
 
 ```ts
 /*vite config ts 配置*/
 vue({
   template: {
     compilerOptions: {
-      isCustomElement: (tag) => tag.includes("xiaoman-"),
+      isCustomElement: (tag) => tag.startsWith("xiao-"),
     },
   },
 });
 ```
 
-### 45. Proxy跨域
+## 45. Proxy 跨域
 
 > 如何解决跨域
 
-1. jsonp 这种方式在之前很常见，他实现的基本原理是利用了HTML里script元素标签没有跨域限制动态创建script标签，将src作为服务器地址，服务器返回一个callback接受返回的参数。
+1. JSONP 是历史方案：利用 `<script src>` 可以加载跨源脚本，让服务端返回对预先约定回调函数的调用。它只支持 GET，返回内容会作为脚本执行，必须信任服务端；现代应用通常优先使用正确配置的 CORS。
 
 ```js
 function clickButton() {
-  let obj, s;
-  obj = { table: "products", limit: 10 }; //添加参数
-  s = document.createElement("script"); //动态创建script
-  s.src = "接口地址xxxxxxxxxxxx" + JSON.stringify(obj);
+  const callbackName = "handleProducts";
+  const url = new URL("https://api.example.com/products");
+  url.search = new URLSearchParams({ limit: "10", callback: callbackName }).toString();
+
+  const s = document.createElement("script");
+  s.src = url.toString();
   document.body.appendChild(s);
 }
-//与后端定义callback名称
-function myFunc(myObj) {
-  //接受后端返回的参数
-  document.getElementById("demo").innerHTML = myObj;
+
+function handleProducts(data) {
+  document.getElementById("demo").textContent = JSON.stringify(data);
 }
 ```
 
-2. cors设置CORS允许跨域资源共享 需要后端设置
+2. CORS 由响应服务器通过 HTTP 响应头授权浏览器中的跨源读取。以下是响应头示意，不是 JSON 配置文件：
 
-```json
-//可以指定地址
-{
-  "Access-Control-Allow-Origin": "http://web.xxx.com"
-}
-
-//也可以使用通配符 任何地址都能访问 安全性不高
-{
-  "Access-Control-Allow-Origin": "*"
-}
+```http
+Access-Control-Allow-Origin: https://web.example.com
+Vary: Origin
 ```
 
-3. 使用Vite proxy或者node代理或者webpack proxy，三种方式都是代理。
+公开且不携带凭据的资源可以返回 `Access-Control-Allow-Origin: *`；带 Cookie 或 HTTP 认证等凭据的请求不能与通配符来源组合使用，还需要正确配置 `Access-Control-Allow-Credentials`、允许的方法与请求头。
+
+3. 开发服务器代理可让浏览器请求同源的本地开发地址，再由开发服务器转发到后端。Vite 的 `server.proxy` 只作用于开发服务器；生产环境需要由网关、反向代理或同源后端提供等价路由。
 
 ```ts
 // vite.config.ts
@@ -2095,8 +1984,8 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:9001/", //跨域地址
-        changeOrigin: true, //支持跨域
+        target: "http://localhost:9001/",
+        changeOrigin: true, // 把转发请求的 Host 改为目标主机
         rewrite: (path) => path.replace(/^\/api/, ""), //重写路径,替换/api
       },
     },
@@ -2104,9 +1993,9 @@ export default defineConfig({
 });
 ```
 
-# Pinia
+## Pinia 复习
 
-## 46. Pinia安装
+### 46. Pinia安装
 
 - 安装 pinia：`npm install pinia`
 - 引入
@@ -2125,51 +2014,37 @@ app.use(store);
 app.mount("#app");
 ```
 
-## 47. Pinia使用 初始化仓库Store
+### 47. 创建并使用 Store
 
-1. 新建一个文件夹Store
-2. 新建文件[name].ts
+1. 按项目约定创建 Store 目录（例如 `src/stores`）
+2. 创建一个模块文件（例如 `test.ts`）
 3. 定义仓库Store
 4. 存储是使用定义的defineStore()，并且它需要一个唯一的名称，作为第一个参数传递
 
 ```ts
 import { defineStore } from "pinia";
-import { Names } from "./store-namespce";
+import { Names } from "./store-namespace";
 
 export const useTestStore = defineStore(Names.Test, {
   state: () => {
     return {
       name: "test",
       current: 1,
+      age: 30,
     };
   },
-});
-
-// 写这种也行
-export const useTestStore = defineStore(Names.Test, {
-  state: () => ({ name: "test", current: 1 }),
-});
-
-import { defineStore } from "pinia";
-import { Names } from "./store-namespce";
-
-// getters和actions的用法
-export const useTestStore = defineStore(Names.Test, {
-  state: () => {
-    return {
-      current: 1,
-    };
-  },
-  //类似于computed 可以帮我们去修饰我们的值
+  // getters 类似 computed，用于派生状态
   getters: {},
-  //可以操作异步 和 同步提交state
+  // actions 可以执行同步或异步业务逻辑
   actions: {},
 });
 ```
 
-## 48. State
+`state: () => ({ ... })` 只是上面 `state() { return { ... } }` 的简写，不要在同一模块中用同一个变量名重复声明 Store。
 
-就是修改仓库中数据的方法
+### 48. State
+
+State 是 Store 保存的响应式数据。Pinia 允许直接修改 state，也提供 `$patch()`、`$state` 和 actions 来组织不同形式的更新。
 
 1. State 是允许直接修改值的 例如current++
 
@@ -2243,7 +2118,7 @@ const Add = () => {
 <script setup lang="ts">
 import { useTestStore } from "./store";
 const Test = useTestStore();
-// 函数形式可以处理逻辑 推荐使用
+// 函数形式适合对集合执行多步变更，并把它们归并为一次 patch 记录
 const Add = () => {
   // state是store中的数据
   Test.$patch((state) => {
@@ -2256,7 +2131,7 @@ const Add = () => {
 <style></style>
 ```
 
-4. 通过原始对象修改整个实例
+4. 给 `$state` 赋值
 
 ```vue
 <template>
@@ -2274,7 +2149,6 @@ const Add = () => {
 <script setup lang="ts">
 import { useTestStore } from "./store";
 const Test = useTestStore();
-// 缺点 必须修改整个对象
 const Add = () => {
   Test.$state = {
     current: 10,
@@ -2286,13 +2160,15 @@ const Add = () => {
 <style></style>
 ```
 
+Pinia 不会真正替换内部 state 对象；`store.$state = value` 在内部仍通过 `$patch()` 合并。TypeScript 通常要求传入完整 state 形状，日常更新更常用直接赋值或 `$patch()`。
+
 5. 通过actions修改
 
 ```ts
 // store.ts
 import { defineStore } from "pinia";
-import { Names } from "./store-naspace";
-export const useTestStore = defineStore(Names.TEST, {
+import { Names } from "./store-namespace";
+export const useTestStore = defineStore(Names.Test, {
   state: () => {
     return {
       current: 1,
@@ -2335,32 +2211,37 @@ const Add = () => {
 <style></style>
 ```
 
-## 49. 解构store
+### 49. 解构 Store
 
-在Pinia直接解构是会失去响应性的。解决方法：可以使用`storeToRefs`。
+直接解构 Store 的 state 或 getters 会失去与 Store 的响应式连接；使用 `storeToRefs()` 解构它们。Actions 本身可以直接解构调用。
 
 ```ts
-const Test = useTestStore();
+import { storeToRefs } from "pinia";
 
-const { current, name } = Test; // 解构
-const { current, name } = storeToRefs(Test); // 解决方案
+const testStore = useTestStore();
+const { current, name } = storeToRefs(testStore);
+const { setCurrent } = testStore;
 
-console.log(current, name);
+console.log(current.value, name.value);
+setCurrent();
 ```
 
-## 50. actions getters
+### 50. Actions 与 Getters
 
 - Actions 支持同步异步
 - 同步 直接调用即可
 - 异步 可以结合async await 修饰
 
 ```ts
+import { defineStore } from "pinia";
+import { Names } from "./store-namespace";
+
 type User = {
   name: string;
   age: number;
 };
 
-let result: User = {
+const demoUser: User = {
   name: "张三",
   age: 18,
 };
@@ -2372,14 +2253,14 @@ const Login = (): Promise<User> => {
         name: "张三",
         age: 18,
       });
-    });
+    }, 300);
   });
 };
 
 export const useTestStore = defineStore(Names.Test, {
   state: () => {
     return {
-      user: <User>{},
+      user: null as User | null,
       name: "test",
     };
   },
@@ -2389,17 +2270,17 @@ export const useTestStore = defineStore(Names.Test, {
       return this.name + `${this.getUserAge}`;
     },
     getUserAge(): number {
-      return this.user.age;
+      return this.user?.age ?? 0;
     },
   },
   //可以操作异步 和 同步提交state
   actions: {
     // 同步
-    setUser() {
-      this.user = result;
+    setUserSync() {
+      this.user = demoUser;
     },
     // 异步 演示
-    async setUser() {
+    async fetchUser() {
       const result = await Login();
       this.user = result;
 
@@ -2414,10 +2295,10 @@ export const useTestStore = defineStore(Names.Test, {
 });
 ```
 
-## 61. Pinia API
+### 51. Pinia API
 
-1. `$reset` 重置store到初始状态
-2. `$subscribe` 只要有state 的变化就会走这个函数
+1. `$reset()` 把 Option Store 恢复为 `state()` 的初始值。Setup Store 没有内置 `$reset()`，需要自己编写 action 重置各个 ref。
+2. `$subscribe()` 订阅 state 变更；回调会收到 mutation 信息和变更后的完整 state。它基于 Vue `watch()`，同一个 `$patch(fn)` 中的多次修改可归并为一次订阅通知。
 
 ```ts
 Test.$subscribe((args, state) => {
@@ -2425,53 +2306,53 @@ Test.$subscribe((args, state) => {
 });
 ```
 
-3. `$onAction` 只要有actions被调用就会走这个函数
+3. `$onAction()` 订阅 action 调用，并可通过 `after()` 和 `onError()` 观察 action 完成或失败。两个订阅 API 都会返回取消订阅函数。
 
-## 62. Pinia 插件
+### 52. Pinia 插件
 
-pinia 和 vuex 都有一个通病 页面刷新状态会丢失，可以写一个pinia插件缓存他的值。
+内存中的前端状态在整页刷新后会重新初始化；这不是 Pinia/Vuex 缺陷。确实需要跨刷新保留的非敏感状态，可以通过 Pinia 插件选择性持久化。认证令牌、个人信息等敏感数据不应无条件写入 `localStorage`。
 
 ```ts
-const __piniaKey = "__PINIAKEY__";
-//定义兜底变量
+import type { PiniaPluginContext, StateTree } from "pinia";
+
+const defaultKey = "__PINIA__";
 
 type Options = {
   key?: string;
 };
 // 定义入参类型
 
-// 将数据存在本地
-const setStorage = (key: string, value: any): void => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
+function readState(key: string): StateTree | undefined {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : undefined;
+  } catch {
+    return;
+  }
+}
 
-// 存缓存中读取
-const getStorage = (key: string) => {
-  return localStorage.getItem(key)
-    ? JSON.parse(localStorage.getItem(key) as string)
-    : {};
-};
+function writeState(key: string, value: StateTree) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.warn("Pinia 状态持久化失败", error);
+  }
+}
 
 // 利用函数柯里化接受用户入参
 // 柯里化就是 将一个多参数的函数转化为单参数的函数
-const piniaPlugin = (options: Options) => {
-  // 将函数返回给pinia  让pinia  调用 注入 context
-  return (context: PiniaPluginContext) => {
-    const { store } = context;
+const piniaPlugin = (options: Options = {}) => {
+  return ({ store }: PiniaPluginContext) => {
+    const storageKey = `${options.key ?? defaultKey}-${store.$id}`;
+    const saved = readState(storageKey);
+    if (saved) store.$patch(saved);
 
-    const data = getStorage(`${options?.key ?? __piniaKey}-${store.$id}`);
-
-    store.$subscribe(() => {
-      setStorage(
-        `${options?.key ?? __piniaKey}-${store.$id}`,
-        toRaw(store.$state),
-      );
-    });
-
-    // 返回值覆盖pinia 原始值
-    return {
-      ...data,
-    };
+    store.$subscribe(
+      (_mutation, state) => writeState(storageKey, state),
+      { detached: true },
+    );
   };
 };
 
@@ -2486,9 +2367,11 @@ pinia.use(
 );
 ```
 
-# Vue-router
+生产级持久化还应加入字段白名单、数据版本与迁移、运行时结构校验、跨标签页同步策略，以及 SSR 首屏状态与客户端存储之间的合并规则。插件必须在创建 Store 之前通过 `pinia.use()` 注册。
 
-## 63. 入门
+## Vue Router 复习
+
+### 63. 入门
 
 1. 安装vue-router：`npm install vue-router@4`
 
@@ -2501,7 +2384,7 @@ import {
   createWebHistory,
   createWebHashHistory,
   createMemoryHistory,
-  RouteRecordRaw,
+  type RouteRecordRaw,
 } from "vue-router";
 
 //路由数组的类型 RouteRecordRaw
@@ -2519,7 +2402,7 @@ const routes: Array<RouteRecordRaw> = [
 ];
 
 const router = createRouter({
-  history: createWebHistory(), // 创建一个webHistory路由
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes, // 路由
 });
 
@@ -2527,31 +2410,33 @@ const router = createRouter({
 export default router;
 ```
 
-`router-view`: 将显示与url对应的组件。
-`router-link`: 使用一个自定义组件`router-link`来创建链接这使得VueRouter可以在不重新加载页面的情况下更改URL，处理URL的生成以及编码。类似一个a标签，但是不同的是，router-link会改变url，但是不会重新加载页面。
+- `<RouterView>`：渲染当前地址匹配到的路由组件。
+- `<RouterLink>`：根据目标位置生成链接，并由 Vue Router 拦截符合条件的点击以执行客户端导航；带修饰键、外部地址等情况仍按普通链接规则处理。
 
-## 64. 路由模式
+### 64. 路由模式
 
 ```ts
 import {
   createRouter,
   createWebHistory, // 基于h5 history实现
-  createWebHashHistory, // 默认 会带#
-  createMemoryHistory, // 一般用于服务器端渲染
-  RouteRecordRaw,
+  createWebHashHistory, // 显式选择 hash 模式，URL 带 #
+  createMemoryHistory, // 不与浏览器 URL 交互，常用于 SSR 或测试
+  type RouteRecordRaw,
 } from "vue-router";
 ```
 
-## 65. 命名路由 编程式导航
+Vue Router 不会自动选择所谓“默认 hash 模式”；调用 `createRouter()` 时必须显式传入一个 history 实现。
 
-### 命名路由
+### 65. 命名路由与编程式导航
+
+#### 命名路由
 
 除了path之外，你还可以为任何路由提供name。这有以下优点：
 
 1. 没有硬编码的 URL
 2. params 的自动编码/解码。
 3. 防止你在 url 中出现打字错误。
-4. 绕过路径排序（如显示一个）
+4. 不依赖路径排名来表达目标路由。
 
 ```ts
 // router/index.ts
@@ -2579,7 +2464,7 @@ const routes: Array<RouteRecordRaw> = [
 <hr />
 ```
 
-### 编程式导航
+#### 编程式导航
 
 本身也是跳转的一种方式，但是需要调用js方法。在组件中编写逻辑。
 
@@ -2620,9 +2505,9 @@ const toPage = (name: string) => {
 };
 ```
 
-## 66. 历史记录
+### 66. 历史记录
 
-```vue
+```html
 <!-- 加上replace属性 可以实现跳转后不添加历史记录 -->
 <router-link replace to="/">Login</router-link>
 <router-link replace style="margin-left:10px" to="/reg">Reg</router-link>
@@ -2630,9 +2515,9 @@ const toPage = (name: string) => {
 
 若是编程式跳转，则使用`router.replace()`方法替代`router.push()`方法即可。
 
-### 横跨历史
+#### 横跨历史
 
-```vue
+```html
 <button @click="next">前进</button>
 <button @click="prev">后退</button>
 ```
@@ -2649,52 +2534,60 @@ const prev = () => {
 };
 ```
 
-## 67. 路由传参
+### 67. 路由传参
 
-### Query路由传参
+#### Query 路由传参
 
-编程式导航 使用router push 或者 replace 的时候 改为对象形式新增query 必须传入一个对象
+编程式导航可以在目标位置对象中提供 `query`。其值必须能序列化为 URL 查询参数，不要直接传入包含嵌套对象的整个业务实体。
 
-```ts
-// 传递参数
-const toDetail = (item: Item) => {
+```vue
+<script setup lang="ts">
+import { useRoute, useRouter } from "vue-router";
+
+type Item = { id: number; name: string; price: number };
+
+const router = useRouter();
+const route = useRoute();
+
+function toDetail(item: Item) {
   router.push({
     path: "/reg",
-    query: item, // 传参 query只能接收对象
+    query: {
+      id: String(item.id),
+      name: item.name,
+      price: String(item.price),
+    },
   });
-};
+}
+</script>
 
-
-// 传递后
-<div>品牌：{{ route.query?.name }}</div>
-<div>价格：{{ route.query?.price }}</div>
-<div>ID：{{ route.query?.id }}</div>
-
-
-// 接收参数
-import { useRoute } from "vue-router";
-// 用useRoute而不是useRouter
-const route = useRoute();
+<template>
+  <div>品牌：{{ route.query.name }}</div>
+  <div>价格：{{ route.query.price }}</div>
+  <div>ID：{{ route.query.id }}</div>
+</template>
 ```
 
-### Params路由传参
+查询参数会出现在 URL 中并在刷新后保留。`route.query` 的值可能是字符串、`null` 或数组，应在使用前验证和转换。
 
-编程式导航 使用router push 或者 replace 的时候 改为对象形式并且只能使用name，path无效，然后传入params
+#### Params 路由传参
+
+使用 params 导航时应通过路由 `name` 指定目标；若同时传 `path` 与 `params`，`params` 会被忽略。Vue Router 4 会丢弃路径模式中未声明的额外 params。
 
 ```ts
 const toDetail = (item: Item) => {
   router.push({
     name: "Reg",
-    params: item,
+    params: { id: item.id },
   });
 };
 ```
 
-### 动态路由传参
+#### 动态路由传参
 
 很多时候，我们需要将给定匹配模式的路由映射到同一个组件。例如，我们可能有一个User组件，它应该对所有用户进行渲染，但用户ID不同。在 VueRouter中，我们可以在路径中使用一个动态字段来实现，我们称之为路径参数
 
-路径参数 用冒号`:`表示。当一个路由被匹配时，它的params的值将在每个组件
+路径参数用冒号 `:` 表示。路由匹配成功后，可通过 `route.params` 读取；同一组件实例在参数变化时可能被复用，因此需要时应监听参数或使用 `onBeforeRouteUpdate()`。
 
 ```ts
 // 传递
@@ -2724,13 +2617,12 @@ const toDetail = (item: Item) => {
 
 两种传参区别：
 
-1. query 传参配置的是 path，而 params 传参配置的是name，在 params中配置 path 无效
-2. query 在路由配置不需要设置参数，而 params 必须设置
-3. query 传递的参数会显示在地址栏中
-4. params传参刷新会无效，但是 query 会保存传递过来的值，刷新不变 ;
-5. 路由配置
+1. query 可与 `path` 或 `name` 一起使用；params 导航通常使用 `name`，并且参数必须在路径模式中声明。
+2. query 位于 `?` 之后，path params 是 URL 路径的一部分；二者都会显示在地址栏并随刷新保留。
+3. query 适合筛选、分页等可选参数；path params 适合标识资源层级或身份。
+4. 两者最终都是外部输入，组件不能假定其类型或可信度。
 
-## 68. 嵌套路由
+### 68. 嵌套路由
 
 ```ts
 const routes: Array<RouteRecordRaw> = [
@@ -2753,9 +2645,9 @@ const routes: Array<RouteRecordRaw> = [
 ];
 ```
 
-注意：不要忘记写`router-view`，加父路由前缀。
+父路由组件（本例的 `footer.vue`）必须包含 `<RouterView>` 才能显示子路由。相对子路径 `reg` 最终匹配 `/user/reg`，导航时要包含父路径，或使用命名路由。
 
-## 69. 命名视图
+### 69. 命名视图
 
 命名视图可以在同一级（同一个组件）中展示更多的路由视图，而不是嵌套显示。 命名视图可以让一个组件中具有多个路由渲染出口，这对于一些特定的布局组件非常有用。 命名视图的概念非常类 似于“具名插槽”，并且视图的默认名称也是`default`。
 
@@ -2789,9 +2681,9 @@ export default router;
 </div>
 ```
 
-## 70. 重定向 别名
+### 70. 重定向与别名
 
-### 重定向 redirect
+#### 重定向 redirect
 
 ```ts
 const routes: Array<RouteRecordRaw> = [
@@ -2800,12 +2692,10 @@ const routes: Array<RouteRecordRaw> = [
     component: () => import("../components/root.vue"),
     // redirect: "/user1", // 重定向 字符串形式
     // redirect: { path: "/user1" }, // 重定向 对象形式
-    redirect: (to) => { // 重定向 函数形式
-        return {
-            path: '/user1',
-            query: to.query // 可以传参
-        }
-
+    redirect: (to) => ({
+      path: "/user1",
+      query: to.query,
+    }),
     children: [
       {
         path: "/user1",
@@ -2825,14 +2715,15 @@ const routes: Array<RouteRecordRaw> = [
 ];
 ```
 
-### 别名
+#### 别名
 
 ```ts
 const routes: Array<RouteRecordRaw> = [
   {
     path: "/",
     component: () => import("../components/root.vue"),
-    alias: ["/root", "/root2", "/root3"], // 添加别名 访问 /root  /root2  /root3  都会跳转到 /
+    // 访问这些 URL 时匹配同一个路由记录，但地址栏保持别名 URL
+    alias: ["/root", "/root2", "/root3"],
     children: [
       {
         path: "user1",
@@ -2852,53 +2743,126 @@ const routes: Array<RouteRecordRaw> = [
 ];
 ```
 
-## 71. 导航守卫
+### 71. 导航守卫
 
-## 72. 路由元信息
+Vue Router 提供三层常用守卫：全局守卫（如 `router.beforeEach`）、路由独享守卫 `beforeEnter`，以及组件内的 `onBeforeRouteUpdate`、`onBeforeRouteLeave`。返回 `false` 可取消导航，返回路由位置可重定向，抛出错误会取消导航并交给 `router.onError()`。
 
-## 73. 路由过渡动效
+```ts
+router.beforeEach((to) => {
+  const loggedIn = Boolean(sessionStorage.getItem("user"));
+  if (to.meta.requiresAuth && !loggedIn) {
+    return { name: "Login", query: { redirect: to.fullPath } };
+  }
+});
+```
 
-## 74. 滚动行为
+前端守卫只改善导航体验，不是权限安全边界；服务端接口仍必须鉴权。
 
-## 75. 动态路由
+### 72. 路由元信息
 
-# PM2
+`meta` 用来附加标题、权限标识等自定义信息。`route.meta` 是所有已匹配路由记录 meta 的非递归合并结果；嵌套对象不会深度合并。
+
+```ts
+declare module "vue-router" {
+  interface RouteMeta {
+    requiresAuth: boolean;
+    title?: string;
+  }
+}
+
+const routes: RouteRecordRaw[] = [
+  {
+    path: "/admin",
+    component: () => import("../pages/Admin.vue"),
+    meta: { requiresAuth: true, title: "管理后台" },
+  },
+];
+```
+
+### 73. 路由过渡动效
+
+使用 `<RouterView>` 的插槽取得当前组件，再用 `<Transition>` 包裹。若按路由路径设置 `key`，参数变化也会创建新组件实例；是否这样做应取决于是否希望复用组件。
+
+```html
+<RouterView v-slot="{ Component, route }">
+  <Transition name="fade" mode="out-in">
+    <component :is="Component" :key="route.path" />
+  </Transition>
+</RouterView>
+```
+
+### 74. 滚动行为
+
+只有使用浏览器 history 的客户端路由器支持 `scrollBehavior`。返回坐标、元素定位或 `savedPosition`；浏览器前进/后退时优先恢复历史位置。
+
+```ts
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes,
+  scrollBehavior(to, _from, savedPosition) {
+    if (savedPosition) return savedPosition;
+    if (to.hash) return { el: to.hash, behavior: "smooth" };
+    return { top: 0 };
+  },
+});
+```
+
+### 75. 动态路由
+
+`addRoute()` 可在运行时注册路由，并返回移除函数；也可用 `removeRoute(name)` 删除命名路由。路由名应唯一。若新路由会匹配当前地址，添加后需要执行一次 `router.replace(router.currentRoute.value.fullPath)` 才会显示新匹配结果。
+
+```ts
+const removeAdmin = router.addRoute({
+  path: "/admin",
+  name: "Admin",
+  component: () => import("../pages/Admin.vue"),
+});
+
+if (router.currentRoute.value.path === "/admin") {
+  await router.replace(router.currentRoute.value.fullPath);
+}
+
+// 权限变化或模块卸载时清理
+removeAdmin();
+```
+
+## PM2
 
 PM2 is a Production Process Manager for Node.js applications with a built-in Load Balancer.
 
-## 76. 安装PM2
+### 76. 安装PM2
 
 - 安装命令：`npm i pm2 -g`
 
-## 77. PM2基本命令
+### 77. PM2基本命令
 
 1.  使用`pm2 -v`查看安装是否成功
 2.  使用`pm2 start index.js`启动`index.js`（Express）文件
-3.  使用`pm2 log`查看日志
+3.  使用`pm2 logs`查看日志
 4.  使用`pm2 list`查看表格
 5.  使用`pm2 stop 0`停止编号为0的服务
 6.  使用`pm2 restart 0`重启编号为0的服务
 7.  使用`pm2 delete 0`删除编号为0的服务
 8.  使用`pm2 start index.js --watch`启动`index.js`（Express）文件 可以实时监听文件变化
-9.  使用`pm2 start index.js --watch i max`启动`index.js`（Express）文件 可以使用多余的线程做负载（max可以为数字）
+9.  使用`pm2 start index.js -i max --watch`以 cluster 模式启动多个工作进程并监听文件变化（`max` 也可替换为具体进程数）；PM2 管理的是进程，不是线程
 10. 使用`pm2 start index.js --watch -n aaa`启动`index.js`（Express）文件 自定义名字
 
-## 78. 服务器后台
+### 78. 服务器后台
 
 尝试配置一个服务器
 
-# Linux
+## Linux
 
-## 79. Linux基本使用
+### 79. Linux基本使用
 
-## 80. Linux基本使用
+### 80. Linux基本使用
 
-## 81. Linux基本使用
+### 81. Linux基本使用
 
-## 82. Linux基本使用
+### 82. Linux基本使用
 
-## 83. Linux基本使用
+### 83. Linux基本使用
 
-# 网络安全
+## 网络安全
 
-## 79. canvas
+### 79. canvas

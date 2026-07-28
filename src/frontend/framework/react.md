@@ -8,7 +8,7 @@
 | ----------------- | ------------------------------ | ---------- |
 | `useState`        | 状态管理                       | ⭐⭐⭐⭐⭐ |
 | `useEffect`       | 副作用处理（数据获取、订阅等） | ⭐⭐⭐⭐⭐ |
-| `useCallback`     | 缓存函数，避免重复创建         | ⭐⭐⭐⭐   |
+| `useCallback`     | 在依赖不变时复用函数引用       | ⭐⭐⭐⭐   |
 | `useMemo`         | 缓存计算结果，避免重复计算     | ⭐⭐⭐⭐   |
 | `useRef`          | 引用 DOM / 存储不变的值        | ⭐⭐⭐⭐   |
 | `useContext`      | 跨组件传递数据                 | ⭐⭐⭐⭐   |
@@ -19,8 +19,8 @@
 
 | Hook             | 用途                                         | 使用频率   |
 | ---------------- | -------------------------------------------- | ---------- |
-| `useActionState` | 管理表单 action 状态（替代 useState + form） | ⭐⭐⭐⭐⭐ |
-| `useFormStatus`  | 获取表单提交状态                             | ⭐⭐⭐⭐   |
+| `useActionState` | 管理 Action 的状态和待处理状态               | ⭐⭐⭐⭐⭐ |
+| `useFormStatus`  | 从 `react-dom` 获取父表单的提交状态          | ⭐⭐⭐⭐   |
 | `useOptimistic`  | 乐观更新（立即更新 UI，后台同步）            | ⭐⭐⭐⭐   |
 
 ---
@@ -42,12 +42,11 @@ React 组件重新渲染的主要时机包括：
 **状态变化**
 
 - 组件自身的 state 发生变化（通过 `useState` 或 `this.setState`）
-- 每次调用 setState 都会触发重新渲染，即使新值与旧值相同
+- React 会用 `Object.is` 比较新旧 state；设置为相同值通常会跳过提交这次更新。某些情况下 React 仍可能先调用组件再决定退出，因此不应依赖 setter 作为“强制渲染”手段。
 
 **Props 变化**
 
-- 父组件传递的 props 发生变化
-- 即使 props 的引用改变但值相同，也会触发渲染
+- 父组件重新渲染时，子组件默认也会被调用；是否因为 props 跳过渲染取决于 `memo`、`PureComponent` 等优化及其比较结果。
 
 **父组件重新渲染**
 
@@ -57,17 +56,14 @@ React 组件重新渲染的主要时机包括：
 **Context 变化**
 
 - 组件使用的 Context 值发生变化
-- 所有订阅该 Context 的组件都会重新渲染
+- 当 Provider 的 `value` 按 `Object.is` 比较发生变化时，读取该 Context 的后代会收到更新；`memo` 不能阻止组件获得新的 Context 值。
 
 **强制更新**
 
 - 类组件调用 `forceUpdate()`
-- 函数组件中可以用 `useState` 的 setter 配合随机值实现
+- 函数组件没有公开的 `forceUpdate()` API。通常应让界面由真实 state/props 驱动，而不是维护一个无业务意义的随机值来强制刷新。
 
-**Hooks 依赖变化**
-
-- `useReducer` 的 dispatch 被调用
-- 自定义 Hook 内部状态变化
+`useReducer` 的 dispatch 只有在 reducer 返回的新 state 未被 `Object.is` 判定为相同时才需要提交更新；自定义 Hook 内部使用的 state、reducer、context 或外部 store 也遵循对应来源的更新规则。Effect 的依赖变化本身不会发起渲染，而是决定已经渲染后是否重新同步副作用。
 
 **优化渲染的方式：**
 
@@ -83,18 +79,33 @@ React 组件重新渲染的主要时机包括：
 ### 插值语句
 
 ```tsx
-1. 插值语句 `{ }`
-2. 插值语句如何支持对象 需要序列化
-3. 事件 驼峰 `<div onClick={fn}>aaa</div>` 如果需要传参可以使用高阶函数 不需要则直接写函数体 `<div onClick={() => fn("aaaa")}>aaa</div>` 泛型函数 `const fn = <T,>(params: T) => {console.log(params);};`
-4. 如何绑定属性 `<div id={id}>111</div>` 如何绑定class `<div className={cls}>111</div>` 如何绑定多个class `<div className={`${cls} aa bb cc`}>111</div>`
-5. 绑定style `<div style={{color: "red"}}>111</div>`
-6. 添加html代码片段 `<div dangerouslySetInnerHTML={{__html: "<h1>111</h1>"}}>`111`</div>` 注意`111`处不能放内容
-7. 如何遍历数组 类似`v-for` `{arr.map((item, index) => return <div key={index}>{item}</div>)}`
+const id = "intro";
+const cls = "active";
+const items = [
+  { id: "a", label: "A" },
+  { id: "b", label: "B" },
+];
+const trustedHtml = "<strong>只放经过可信来源或消毒处理的 HTML</strong>";
+
+export function Example() {
+  const handleClick = (value: string) => console.log(value);
+
+  return (
+    <section id={id} className={`${cls} panel`} style={{ color: "red" }}>
+      <button onClick={() => handleClick("aaaa")}>点击</button>
+      <pre>{JSON.stringify({ id, cls }, null, 2)}</pre>
+      <div dangerouslySetInnerHTML={{ __html: trustedHtml }} />
+      {items.map((item) => <div key={item.id}>{item.label}</div>)}
+    </section>
+  );
+}
 ```
+
+JSX 中不能直接渲染普通对象，可选择字段或显式序列化。`dangerouslySetInnerHTML` 与 children 不能同时使用，且未经消毒的外部 HTML 会造成 XSS。列表 `key` 应使用稳定业务标识；只有列表确实不会重排、插入或删除时才适合用索引。
 
 ::: tip 一些要点
 
-对于`onClick`: 绑定对应的事件处理函数, 它本身是一个函数, 而不是一个函数调用. 因此不能写`onclick="setHome(false)"`, 而是需要写`onClick={() => setHome(false)}`(高阶函数形式)
+`onClick` 接收事件处理函数，而不是字符串或渲染期间立即执行的函数调用。没有额外参数时可写 `onClick={handleClick}`；需要传参时可写 `onClick={() => setHome(false)}`，这里是用箭头函数延迟调用，并不是“高阶函数”。
 
 条件渲染 循环渲染:
 
@@ -103,52 +114,45 @@ React 组件重新渲染的主要时机包括：
 
 ## babel
 
-1. 语法转换
-2. Polyfill
-3. JSX
-4. 插件
+1. 解析并转换较新的 JavaScript 语法
+2. 通过 preset/plugin 转换 JSX、TypeScript 语法等
+3. 提供可组合的插件与 preset 体系
+
+Babel 负责语法转换，但不会凭空提供运行时 API。需要兼容旧环境时，应根据目标环境配合 `core-js` 等 polyfill 方案；具体是否、如何注入取决于 preset 配置。
 
 ## SWC
 
-1. avaScript/TypeScript 转换
-2. 模块打包
-3. SWC 支持代码压缩和优化
-4. SWC 原生支持 TypeScript
-5. SWC 原生支持 TypeScript
+1. JavaScript、JSX、TypeScript 与 TSX 的解析和转换
+2. 按目标环境降级语法
+3. 代码压缩
+4. 可作为 webpack、Rspack、Next.js 等工具链中的编译器
+
+SWC 核心是编译器，不应直接等同于完整模块打包器。它能移除 TypeScript 类型语法，但默认不执行 TypeScript 类型检查；类型检查仍需 `tsc --noEmit` 或其他工具。
 
 ### 原理
 
 ## Hooks
 
-react中所有的Hook都需要在组件的最顶层调用
+Hook 只能在 React 函数组件或自定义 Hook 的顶层调用，不能放在循环、条件分支或普通函数中。
 
-### \*useState 状态 (vue响应式变量)
+### useState 状态
 
 对于基本类型的使用:
 
 ```tsx
-import "./App.css";
 import { useState } from "react";
+
 function App() {
-  let [str, setStr] = useState("test1");
-  const handlerClick = () => {
-    setArr([...arr, 4]); //末尾新增 扩展运算符
-    //setArr([0,...arr]) 头部新增 扩展运算符
-    setArr(arr.filter((item) => item !== 1)); //删除指定元素
-    setArr(
-      // 使用map筛选出需要替换的元素，然后替换为新的元素，其他元素保持不变
-      arr.map((item) => {
-        return item == 2 ? 666 : item;
-      }),
-    );
-  };
+  const [message, setMessage] = useState("test1");
+
   return (
     <>
-      <h1>{str}</h1>
-      <button onClick={handlerClick}>111</button>
+      <h1>{message}</h1>
+      <button onClick={() => setMessage("test2")}>更新文本</button>
     </>
   );
 }
+
 export default App;
 ```
 
@@ -159,15 +163,26 @@ export default App;
 - 替换元素 --> map
 - 排序 --> 先将数组复制一份
 
-useState 的set函数是异步的，目的是性能优化 如果需要同步更新，可以使用 useReducer
+这些操作都应返回新数组，不要直接修改 state 中原有的数组：
+
+```tsx
+const [items, setItems] = useState([1, 2, 3]);
+
+setItems((current) => [...current, 4]);
+setItems((current) => current.filter((item) => item !== 1));
+setItems((current) => current.map((item) => (item === 2 ? 666 : item)));
+setItems((current) => [...current].sort((a, b) => a - b));
+```
+
+`useState` 的 setter 会为后续渲染排队更新；它不会立即改变当前事件处理函数已经读取到的 state 快照。`useReducer` 也遵循相同的渲染与批处理机制，适合把复杂的状态转换集中到 reducer 中，但不能用来获得“同步更新”。
 
 ::: warning 注意
 
-setState是异步的, 因此更新的状态可能不是最新的
+调用 setter 后，当前函数中的状态变量仍然是本次渲染的快照；新值会在后续渲染中读取到。
 
 This is because states behaves like a snapshot. Updating state requests another render with the new state value, but does not affect the count JavaScript variable in your already-running event handler.
 
-If you need to use the next state, you can save it in a variable before passing it to the set function:
+如果当前逻辑还需要使用计算后的值，可以先把它保存到变量中，再传给 setter：
 
 ```ts
 const nextCount = count + 1;
@@ -177,22 +192,22 @@ console.log(count); // 0
 console.log(nextCount); // 1
 ```
 
-如果我们想要基于之前的值进行更改, 要使用匿名函数的形式
+如果下一状态依赖上一状态，尤其是在同一批处理中连续更新多次，应使用函数式更新：
 
 ```ts
-setAge(age + 1); // 错误
-setAge((age) => age + 1); // 正确
+setAge(age + 1); // 只基于当前渲染快照计算一次时可以使用
+setAge((currentAge) => currentAge + 1); // 依赖上一状态时更稳妥
 ```
 
 :::
 
-### useReducer 集中式 状态 (高级Hook)
+### useReducer：集中管理复杂状态更新
 
 `const [state, dispatch] = useReducer(reducer, initialArg, init?)`
 
-- `reducer`: 处理函数 默认不触发 调用dispatch时才会触发
+- `reducer`: 纯函数；接收当前 state 和 action，并返回下一 state。初始化和后续渲染期间 React 都可能调用它，开发模式下还可能额外调用以帮助发现副作用
 - `initialArg`: 默认值
-- `init`: 初始化函数(可选) 只会触发一次 如果有初始化函数，则initialArg会被忽略(使用初始化函数`return`的值作为初始值 例如赋值 处理逻辑)
+- `init`: 可选的惰性初始化函数；React 使用 `init(initialArg)` 的返回值作为初始 state
 
 ![useReducer](/assert/react-image/useReducer.png)
 
@@ -209,37 +224,40 @@ const initData = [
 
 type Data = typeof initData;
 
+type Action =
+  | { type: "add" | "sub" | "del" | "edit" | "blur"; id: number }
+  | { type: "update_name"; id: number; newName: string };
+
 // 处理函数
 const reducer = (
   state: Data,
-  action: {
-    type: "add" | "sub" | "del" | "edit" | "update_name" | "blur";
-    id: number;
-    newName?: string;
-  },
-) => {
-  const item = state.find((item) => item.id === action.id);
-  // console.log(item);
+  action: Action,
+): Data => {
   switch (action.type) {
     case "add":
-      item.count++;
-      return [...state];
+      return state.map((item) =>
+        item.id === action.id ? { ...item, count: item.count + 1 } : item,
+      );
     case "sub":
-      item.count--;
-      return [...state];
+      return state.map((item) =>
+        item.id === action.id
+          ? { ...item, count: Math.max(0, item.count - 1) }
+          : item,
+      );
     case "del":
       return state.filter((item) => item.id !== action.id);
     case "edit":
-      item.isEdit = !item.isEdit;
-      return [...state];
+      return state.map((item) =>
+        item.id === action.id ? { ...item, isEdit: !item.isEdit } : item,
+      );
     case "update_name":
-      item.name = action.newName;
-      return [...state];
+      return state.map((item) =>
+        item.id === action.id ? { ...item, name: action.newName } : item,
+      );
     case "blur":
-      item.isEdit = !item.isEdit;
-      return [...state];
-    default:
-      return state;
+      return state.map((item) =>
+        item.id === action.id ? { ...item, isEdit: false } : item,
+      );
   }
 };
 
@@ -338,20 +356,31 @@ export default App;
 安装: `pnpm add immer use-immer`
 
 ```tsx
-// useImmer
-import { useImmer } from "use-immer";
+import { useImmer, useImmerReducer } from "use-immer";
 
-// ...
-const updateTheme = () => {
-  setUser((draft) => {
-    draft.profile.preferences.theme = "dark";
-  });
+type User = {
+  profile: { preferences: { theme: "light" | "dark" } };
 };
 
-// useImmerReducer
-import { useImmerReducer } from "use-immer";
+function ThemeButton() {
+  const [user, setUser] = useImmer<User>({
+    profile: { preferences: { theme: "light" } },
+  });
 
-// ...
+  const updateTheme = () => {
+    setUser((draft) => {
+      draft.profile.preferences.theme = "dark";
+    });
+  };
+
+  return <button onClick={updateTheme}>{user.profile.preferences.theme}</button>;
+}
+
+type State = { count: number; isLoading: boolean; history: number[] };
+type Action =
+  | { type: "INCREMENT" | "DECREMENT" | "RESET" | "ADD_TO_HISTORY" }
+  | { type: "SET_LOADING"; payload: boolean };
+
 function counterReducer(draft: State, action: Action) {
   switch (action.type) {
     case "INCREMENT":
@@ -371,6 +400,20 @@ function counterReducer(draft: State, action: Action) {
       break;
   }
 }
+
+function Counter() {
+  const [state, dispatch] = useImmerReducer(counterReducer, {
+    count: 0,
+    isLoading: false,
+    history: [],
+  });
+
+  return (
+    <button onClick={() => dispatch({ type: "INCREMENT" })}>
+      {state.count}
+    </button>
+  );
+}
 ```
 
 ### useSyncExternalStore
@@ -379,7 +422,7 @@ useSyncExternalStore 用于从外部存储（例如状态管理库、浏览器 A
 
 使用场景:
 
-1. 订阅外部 store 例如(redux,Zustand德语)
+1. 订阅外部 store，例如 Redux、Zustand 等
 2. 订阅浏览器API 例如(online,storage,location)等
 3. 抽离逻辑，编写自定义hooks
 4. 服务端渲染支持
@@ -387,12 +430,16 @@ useSyncExternalStore 用于从外部存储（例如状态管理库、浏览器 A
 用法:
 
 ```ts
-const res = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot?)
+const snapshot = useSyncExternalStore(
+  subscribe,
+  getSnapshot,
+  getServerSnapshot,
+);
 ```
 
 - subscribe：用来订阅数据源的变化，接收一个回调函数，在数据源更新时调用该回调函数。
-- getSnapshot：获取当前数据源的快照（当前状态）。
-- getServerSnapshot?：在服务器端渲染时用来获取数据源的快照。
+- getSnapshot：获取当前数据源的快照（当前状态）。在 store 没有变化时，它必须返回与上次 `Object.is` 相等的值；如果快照是可变对象，应缓存不可变快照。
+- getServerSnapshot：可选。在服务端渲染以及 hydration 时提供初始快照；服务端输出与客户端首次读取的值应保持一致。
 
 案例一:
 
@@ -416,38 +463,68 @@ export default App;
 
 ```ts
 // useStorage.ts
-import { useSyncExternalStore } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 
-export const useStorage = (key: string, initialValue: any) => {
+const localChangeEvent = "local-storage-change";
+
+export const useStorage = <T,>(key: string, initialValue: T) => {
+  const cache = useRef<{ raw: string | null; value: T }>({
+    raw: null,
+    value: initialValue,
+  });
+
   // 订阅者
   // 2. React 调用 subscribe(内部callback)，建立监听
-  const subscribe = (callback: () => void) => {
-    // 订阅浏览器API
-    // 3. 当 storage 变化时，浏览器触发事件
-    // 4. 事件触发后，内部callback 被调用
-    window.addEventListener("storage", callback);
-    return () => {
-      // 返回取消订阅
-      window.removeEventListener("storage", callback);
+  const subscribe = useCallback((callback: () => void) => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === key) callback();
     };
-  };
+    const handleLocalChange = (event: Event) => {
+      const { detail } = event as CustomEvent<{ key: string }>;
+      if (detail.key === key) callback();
+    };
+
+    // storage 事件负责其他文档的更新；自定义事件负责当前文档的更新
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener(localChangeEvent, handleLocalChange);
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(localChangeEvent, handleLocalChange);
+    };
+  }, [key]);
 
   // 快照
   // 1. React 调用 getSnapshot()，先拿当前值
-  const getSnapshot = () => {
-    return localStorage.getItem(key)
-      ? JSON.parse(localStorage.getItem(key))
-      : initialValue;
+  const getSnapshot = useCallback(() => {
+    const raw = localStorage.getItem(key);
+    if (raw === null) {
+      if (cache.current.raw !== null || !Object.is(cache.current.value, initialValue)) {
+        cache.current = { raw: null, value: initialValue };
+      }
+      return cache.current.value;
+    }
+    if (raw === cache.current.raw) return cache.current.value;
+
+    let value = initialValue;
+    try {
+      value = JSON.parse(raw) as T;
+    } catch {
+      value = initialValue;
+    }
+    cache.current = { raw, value };
+    return value;
+  }, [initialValue, key]);
+
+  const value = useSyncExternalStore(subscribe, getSnapshot, () => initialValue);
+
+  const update = (nextValue: T) => {
+    localStorage.setItem(key, JSON.stringify(nextValue));
+    window.dispatchEvent(
+      new CustomEvent(localChangeEvent, { detail: { key } }),
+    );
   };
 
-  const res = useSyncExternalStore(subscribe, getSnapshot);
-
-  const update = (value: any) => {
-    localStorage.setItem(key, JSON.stringify(value));
-    // 手动触发storage事件
-    window.dispatchEvent(new StorageEvent("storage"));
-  };
-  return [res, update];
+  return [value, update] as const;
 };
 
 // const [count, setCount] = useStorage("count", 1);
@@ -476,22 +553,20 @@ export default App;
 // useHistory.ts
 import { useSyncExternalStore } from "react";
 
-// histoty api去实现 跳转页面 监听history 变化
+const historyChangeEvent = "app-history-change";
 
 export const useHistory = () => {
   const subscribe = (callback: () => void) => {
-    // 订阅浏览器api监听history 变化
-    // vue里面的路由 三种模式 一种ssr用的 两种web history hash
-    //history 底层popstate
-    //hash 底层hashchange
+    // popstate 处理前进/后退；hashchange 处理 URL 片段变化；
+    // 自定义事件处理本 Hook 主动执行的 pushState/replaceState。
     window.addEventListener("popstate", callback);
     window.addEventListener("hashchange", callback);
+    window.addEventListener(historyChangeEvent, callback);
     return () => {
-      // 返回取消订阅
       window.removeEventListener("popstate", callback);
       window.removeEventListener("hashchange", callback);
+      window.removeEventListener(historyChangeEvent, callback);
     };
-    // popstate 只能监听浏览器前进后退按钮无法监听 pushstate replacestate
   };
 
   const getSnapshot = () => {
@@ -502,12 +577,12 @@ export const useHistory = () => {
 
   const push = (url: string) => {
     window.history.pushState({}, "", url);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    window.dispatchEvent(new Event(historyChangeEvent));
   };
 
-  const replace = (rul: string) => {
-    window.history.replaceState({}, "", rul);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+  const replace = (url: string) => {
+    window.history.replaceState({}, "", url);
+    window.dispatchEvent(new Event(historyChangeEvent));
   };
 
   return [url, push, replace] as const;
@@ -519,7 +594,7 @@ export const useHistory = () => {
 // const [url, push, replace] = useHistory();
 ```
 
-### useTransition 过渡函数 用来做优化 (实际应用较少)
+### useTransition：把非紧急更新标记为 Transition
 
 ```ts
 const [isPending, startTransition] = useTransition();
@@ -532,26 +607,28 @@ const [isPending, startTransition] = useTransition();
 1. `isPending(boolean)`，告诉你是否存在待处理的 transition。
 2. `startTransition(function)` 函数，你可以使用此方法将状态更新标记为 transition。
 
-> 注意: `startTransition` 必须是同步的
+React 19 允许传给 `startTransition` 的 Action 是异步函数。不过在当前版本中，`await` 之后发生的状态更新不会自动继承 Transition 标记，需要再包一层 `startTransition`。输入框自身的受控更新也不能直接放进 Transition，应立即更新输入值，再延迟渲染代价较高的结果。
 
-### useDeferredValue 用于延迟某些状态的更新 用来做优化
+### useDeferredValue：延迟使用某个值
 
 :::info `useTransition` 和 `useDeferredValue` 的区别
 
 `useTransition` 和 `useDeferredValue` 都涉及延迟更新，但它们关注的重点和用途略有不同：
 
-- useTransition主要关注点是`状态的过渡`。它允许开发者控制某个更新的延迟更新，还提供了过渡标识，让开发者能够添加过渡反馈。
-- useDeferredValue主要关注点是`单个值`的延迟更新。它允许你把特定状态的更新标记为低优先级。
+- `useTransition` 用于把自己能够控制的状态更新标记为非紧急更新，并通过 `isPending` 提供待处理状态。
+- `useDeferredValue` 返回某个值的延迟版本，适合在无法控制该值的更新来源时，让依赖它的较慢 UI 在后台重新渲染。它不会延迟网络请求，也不会改变原值本身。
   :::
 
 ```ts
 // value: 延迟更新的值(支持任意类型)
-const deferredValue = useDeferredValue(value);
+const deferredValue = useDeferredValue(value, initialValue);
 ```
 
-### \*useEffect
+第二个 `initialValue` 参数是可选的；提供时，组件首次渲染会使用它作为延迟值，并在后台用真实值重新渲染。
 
-`useEffect` 是 React 中用于处理副作用的钩子。并且 `useEffect` 还在这里充当生命周期函数
+### useEffect
+
+`useEffect` 用于让组件与 React 之外的系统同步，例如网络、浏览器 API、计时器或第三方组件。它的执行过程和类组件的部分生命周期阶段相似，但更准确的理解是“建立同步，并在必要时撤销同步”。
 
 > 什么是副作用函数，什么是纯函数？
 
@@ -574,74 +651,67 @@ const deferredValue = useDeferredValue(value);
 
 ```ts
 //------------副作用函数--------------
-let obj = { name: "小满" };
-const changeObj = (obj) => {
-  obj.name = "大满";
-  return obj;
+const mutableUser = { name: "小满" };
+const mutateUser = (user: { name: string }) => {
+  user.name = "大满";
+  return user;
 };
-//小满
-changeObj(obj); //修改了外部变量属于副作用函数
-//大满
+mutateUser(mutableUser); // 修改了传入对象
+
 //------------修改成纯函数--------------
-//也就是不会改变外部传入的变量
-let obj = { name: "alice" };
-const changeObj = (obj) => {
-  // 1. JSON.parse(JSON.stringify(obj))
-  // 2. lodash.cloneDeep(obj)
-  // 3. 手写deep函数
-  // 4. window.structuredClone(obj) 浏览器自带的深拷贝函数
-  const newObj = window.structuredClone(obj); //深拷贝
-  newObj.name = "Jack";
-  return newObj;
+const immutableUser = { name: "Alice" };
+const renameUser = (user: { name: string }) => {
+  return { ...user, name: "Jack" };
 };
-console.log(obj, "before");
-let newobj = changeObj(obj);
-console.log(obj, "after", newobj);
+
+const renamedUser = renameUser(immutableUser);
+console.log(immutableUser, renamedUser);
 ```
 
 #### 基本用法
 
 ```ts
-useEffect(setup, dependencies?)
+useEffect(setup, dependencies);
 ```
 
 参数:
 
-- `setup`：Effect处理函数, 可以返回一个清理函数。组件挂载时执行setup, 依赖项更新时先执行cleanup再执行setup, 组件卸载时执行cleanup。
+- `setup`：Effect 处理函数，可以返回一个清理函数。组件提交到页面后执行 setup；依赖项变化时先使用旧值执行 cleanup，再使用新值执行 setup；卸载时再执行最后一次 cleanup。
 - `dependencies`：setup中使用到的响应式值列表(props、state等)。必须以数组形式编写如[dep1, dep2]。不传则每次重渲染都执行Effect。
 
 示例:
 
 ```tsx
-// 操作DOM
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 function App() {
-  const dom = document.getElementById("data");
-  console.log(dom); //null
+  const elementRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    const data = document.getElementById("data");
-    console.log(data); //<div id='data'>zs</div>
+    console.log(elementRef.current); // 已提交到 DOM 的 div
   }, []);
-  return <div id="data">zs</div>;
+
+  return <div ref={elementRef}>zs</div>;
 }
 ```
 
 执行时机:
 
-1. 组件渲染完成会立马执行
-2. 组件更新时执行
-3. 依赖项发生变化时执行 空数组的情况只走一次(初始化, 详情页数据)
-4. 组件卸载时执行 清理函数 组件更新之前也会执行
+1. React 提交 DOM 更新后，Effect 的 setup 会按调度时机执行；它不是在渲染函数执行完后“立刻”运行。
+2. 不传依赖数组时，每次提交后都会重新执行。
+3. 传入依赖数组时，只有某个依赖与上次相比不满足 `Object.is` 相等才会重新执行；空数组表示不因响应式值变化而重跑。
+4. 清理函数会在下一次相关 setup 之前以及组件卸载时执行。开发环境启用 Strict Mode 时，React 还会额外执行一次 setup → cleanup → setup，以检查清理逻辑是否完整。
 
 ::: warning useEffect的一些注意点
 
 useEffect
 
-1. 比如可以实现类似于生命周期的函数, 第一个参数是setup函数(匿名函数), 不能写Promise
-2. 第二个参数是依赖项, 如果依赖项有变化, 则会重新执行匿名函数, 如果依赖项为空, 则只会执行一次
-3. setup 函数, 函数返回一个函数, 这个函数会在组件卸载时执行
-4. setup 中的返回值会先于setup 执行, 因此在setup 中返回一个函数, 则会在组件卸载时执行
+1. setup 只能返回清理函数或不返回值，不能直接声明为 `async`，因为异步函数会返回 Promise。需要异步工作时，可在 setup 内定义并调用异步函数。
+2. 依赖数组必须包含 setup 中读取的所有响应式值；空数组在生产环境通常只建立一次同步，但开发环境 Strict Mode 会进行额外检查。
+3. 清理函数不仅在卸载时执行，也会在依赖变化后、下一次 setup 运行之前执行。
+4. 不要用 Effect 处理可以在渲染期间直接计算的数据；Effect 主要用于与外部系统同步。
+
+:::
 
 ### Clean up
 
@@ -653,20 +723,23 @@ React calls your setup and cleanup functions whenever it’s necessary, which ma
    - Then, your `setup code` runs with the new props and state.
 3. Your `cleanup code` runs one final time after your component is `removed` from the page (unmounts).
 
-```ts
-// 使用useEffect
-useEffect(() => {
-  // 创建一个定时器，每秒更新当前时间 只在首次渲染时执行
-  const interval = setInterval(() => {
-    setCurrentTime(new Date().toLocaleString());
-  }, 1000);
+```tsx
+import { useEffect, useState } from "react";
 
-  // 清除定时器 组件被remove时执行
-  return () => clearInterval(interval);
-}, []);
+function Clock() {
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return <time>{currentTime.toLocaleString()}</time>;
+}
 ```
-
-:::
 
 ### SWR
 
@@ -677,30 +750,34 @@ SWR = Stale-While-Revalidate，用于数据获取的 React Hooks 库
 可以使用`useEffect` 来实现:
 
 ```jsx
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+const adviceURL = "https://api.adviceslip.com/advice";
+
 function App() {
-  const adviceURL = "https://api.adviceslip.com/advice";
+  const [advice, setAdvice] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  async function getAdvice() {
+  const getAdvice = useCallback(async () => {
     setIsLoading(true);
-    const result = await fetch(adviceURL);
-    const data = await result.json();
-    setAdvice(data.slip.advice);
-    setIsLoading(false);
-  }
-
-  useEffect(() => {
-    getAdvice();
+    try {
+      const result = await fetch(adviceURL);
+      if (!result.ok) throw new Error(`HTTP ${result.status}`);
+      const data = await result.json();
+      setAdvice(data.slip.advice);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const [advice, setAdvice] = useState("");
-
-  const [isLoading, setIsLoading] = useState(false);
+  useEffect(() => {
+    void getAdvice();
+  }, [getAdvice]);
 
   return (
     <main>
       <h1>Advice App</h1>
-      <p>{isLoading ? "Loding..." : data.slip.advice}</p>
+      <p>{isLoading ? "Loading..." : advice}</p>
       <button disabled={isLoading} onClick={getAdvice}>
         Get Advice
       </button>
@@ -710,7 +787,7 @@ function App() {
 export default App;
 ```
 
-使用SWR, 可以不用定义函数
+使用 SWR 时仍然需要提供请求函数（fetcher），但缓存、重新验证和请求状态由 SWR 管理：
 
 ```jsx
 import useSWR from "swr";
@@ -719,7 +796,7 @@ function App() {
 
   const fetcher = (...args) => fetch(...args).then((res) => res.json());
   /**
-   * SWR 只会在首次渲染时执行
+   * SWR 会在 key 有效时请求数据，并可在重新聚焦、网络恢复等时机重新验证
    * data 是 API 返回的数据
    * isLoading 是一个布尔值，表示数据是否正在加载中
    * error 是 API 返回的错误信息
@@ -727,7 +804,7 @@ function App() {
    */
   const {
     data,
-    _error,
+    error,
     isLoading,
     mutate: getAdvice,
   } = useSWR(adviceURL, fetcher);
@@ -735,8 +812,8 @@ function App() {
   return (
     <main>
       <h1>Advice App</h1>
-      <p>{isLoading ? "Loding..." : data.slip?.advice}</p>
-      <button disabled={isLoading} onClick={getAdvice}>
+      <p>{error ? error.message : isLoading ? "Loading..." : data?.slip?.advice}</p>
+      <button disabled={isLoading} onClick={() => getAdvice()}>
         Get Advice
       </button>
     </main>
@@ -748,7 +825,11 @@ export default App;
 SWR也可以不一上来获取数据, 而是在需要的时候获取. 可以使用`useSWRMutation`.
 
 ```ts
-useSWRMutation(key, fetcher, options?)
+const { trigger, data, error, isMutating } = useSWRMutation(
+  key,
+  fetcher,
+  options,
+);
 ```
 
 这里各部分含义：
@@ -762,7 +843,7 @@ useSWRMutation(key, fetcher, options?)
 
 - 第二个参数，请求函数。(封装一个fetch, 用于请求数据)
 - 传入请求函数
-- 使用`trigger(arg)`的时候需要把之前定义的fetcher的参数传入(url会自己读取API_URL, 不需要手动传入)。
+- 调用 `trigger(arg)` 时，SWR 会把 `arg` 作为第二个参数对象中的 `arg` 字段传给 fetcher，例如 `async (url, { arg }) => ...`；第一个参数仍是 key。
 
 3. 解构出来的内容
 
@@ -792,9 +873,9 @@ useLayoutEffect(() => {
 
 | 区别         | useLayoutEffect                        | useEffect                              |
 | ------------ | -------------------------------------- | -------------------------------------- |
-| **执行时机** | 浏览器完成布局和绘制**之前**执行副作用 | 浏览器完成布局和绘制**之后**执行副作用 |
-| **执行方式** | 同步执行                               | 异步执行                               |
-| **DOM渲染**  | 阻塞DOM渲染                            | 不阻塞DOM渲染                          |
+| **执行时机** | DOM 已提交、浏览器绘制前执行            | 通常在浏览器绘制后执行；交互触发的 Effect 也可能在绘制前运行 |
+| **调度特征** | setup 与其中的更新会阻塞浏览器绘制      | 不应依赖“必定异步”或“必定绘制后”的时序 |
+| **适用范围** | 绘制前测量布局或同步调整视觉结果         | 默认选择，用于大多数外部系统同步       |
 
 :::
 
@@ -802,26 +883,34 @@ useLayoutEffect(() => {
 
 - 需要同步读取或更改DOM：例如，你需要读取元素的大小或位置并在渲染前进行调整。
 - 防止闪烁：在某些情况下，异步的`useEffect`可能会导致可见的布局跳动或闪烁。例如，动画的启动或某些可见的快速DOM更改。
-- 模拟生命周期方法：如果你正在将旧的类组件迁移到功能组件，并需要模拟 `componentDidMount`、`componentDidUpdate`和`componentWillUnmount`的同步行为。
+- 第三方 DOM 库要求在浏览器绘制前完成测量和同步调整。除此之外应优先使用 `useEffect`，避免不必要地阻塞绘制。
 
 ### useRef
 
 - 通过Ref操作DOM元素
 - 数据存储
 
-```ts
+```tsx
 import { useRef } from "react";
-const refValue = useRef(initialValue); // 返回一个对象
-// 访问ref的值 类似于vue的ref,Vue的ref是.value，其次就是vue的ref是响应式的，而react的ref不是响应式的
-refValue.current;
+
+function TextInput() {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <>
+      <input ref={inputRef} />
+      <button onClick={() => inputRef.current?.focus()}>聚焦</button>
+    </>
+  );
+}
 ```
 
 #### 注意事项
 
 1. 组件在重新渲染的时候，useRef的值不会被重新初始化。
 2. 改变 ref.current 属性时，React 不会重新渲染组件。React 不知道它何时会发生改变，因为 ref 是一个普通的 JavaScript 对象。(不是响应式的)
-3. useRef的值不能作为useEffect等其他hooks的依赖项，因为它并不是一个响应式状态。
-4. useRef不能直接获取子组件的实例，需要使用forwardRef。
+3. `ref` 对象本身的引用通常是稳定的，可以出现在依赖数组中；但修改 `ref.current` 不会触发渲染，因此把 `ref.current` 放入依赖数组也不能让 Effect 自动响应其变化。
+4. React 18 中，函数组件要接收父组件传入的 `ref`，通常需要 `forwardRef`。React 19 支持把 `ref` 作为函数组件的 prop 传入，新代码不再必须使用 `forwardRef`；类组件和 DOM 元素仍可直接接收 ref。
 
 ### useImperativeHandle 父组件使用子组件的实例 方法
 
@@ -835,14 +924,14 @@ useImperativeHandle(ref, () => {
   return {
     // 暴露给父组件的方法或属性
   };
-}, [deps]);
+}, dependencies);
 ```
 
 #### 执行时机
 
-1. 如果不传入第三个参数，那么 `useImperativeHandle` 会在组件挂载时执行一次，然后状态更新时，都会执行一次
-2. 如果传入第三个参数，并且是一个空数组，那么 `useImperativeHandle` 会在组件挂载时执行一次，然后状态更新时，不会执行
-3. 如果传入第三个参数，并且有值，那么 `useImperativeHandle` 会在组件挂载时执行一次，然后会根据依赖项的变化，决定是否重新执行
+1. 不传第三个参数时，每次组件重新渲染都会重新执行 `createHandle`。
+2. 传入空数组时，在依赖不变的情况下复用同一个句柄。
+3. 传入依赖项时，React 使用 `Object.is` 比较依赖；变化后会重新执行 `createHandle`。开发环境 Strict Mode 可能额外调用组件函数以检查纯度，因此不要在 `createHandle` 中放置副作用。
 
 ### useContext
 
@@ -855,73 +944,81 @@ useImperativeHandle(ref, () => {
 #### 基本用法
 
 ```tsx
-// React 18
-const MyThemeContext = React.createContext({ theme: "light" }); // 创建一个上下文 填充默认值
+import { createContext, useContext } from "react";
+
+const MyThemeContext = createContext({ theme: "light" });
+
 function App() {
   return (
-    // React 19 去掉了Provider
-    // <MyThemeContext value={{ theme: "light" }}>
-    <MyThemeContext.Provider value={{ theme: "light" }}>
+    <MyThemeContext value={{ theme: "dark" }}>
       <MyComponent />
-    </MyThemeContext.Provider>
-    // </MyThemeContext>
+    </MyThemeContext>
   );
 }
+
 function MyComponent() {
-  const themeContext = useContext(MyThemeContext); // 使用上下文
+  const themeContext = useContext(MyThemeContext);
   return <div>{themeContext.theme}</div>;
 }
 ```
 
+React 19 可以直接把 Context 对象作为 Provider 使用。React 18 应写成 `<MyThemeContext.Provider value={...}>`；React 19 仍兼容 `.Provider`，并不是删除了 Provider。
+
 #### 注意事项
 
-- 使用 `ThemeContext` 时，传递的key必须为 `value`
+- Provider 接收的上下文值使用 `value` prop 传递
 - 可以使用多个 `Context`
-- 同一个 `Context`, 下层的值会覆盖上层的值
+- 组件读取同一个 Context 时，会获得其上方距离最近的 Provider 所提供的值
 
 ### useMemo 性能优化
 
-`useMemo` 是 React 提供的一个性能优化 Hook。它的主要功能是避免在每次渲染时执行复杂的计算和对象重建。通过记忆上一次的计算结果，仅当依赖项变化时才会重新计算，提高了性能，有点类似于Vue的 `computed`。
+`useMemo` 是 React 提供的性能优化 Hook。它会在依赖不变时复用上一次的计算结果，可用于跳过代价较高的计算或稳定对象引用。它不提供语义保证，React 在特定情况下可能丢弃缓存，因此程序的正确性不能依赖 `useMemo`。
 
 #### React.memo
 
-`React.memo` 是一个 React API，用于优化性能。它通过记忆上一次的渲染结果，仅当 props 发生变化时才会重新渲染, 避免重新渲染。
+`React.memo` 是一个 React API，用于在父组件重新渲染、且组件 props 与上次相比没有变化时跳过该组件的重新渲染。默认比较方式是逐项使用 `Object.is`；组件自身 state 或读取到的 Context 变化时仍会重新渲染。
 
 #### 用法
 
-使用 `React.memo` 包裹组件[一般用于子组件]，可以避免组件重新渲染。
+使用 `React.memo` 包裹组件可以在 props 稳定时跳过一部分不必要的重新渲染，但它只是性能优化，不应无条件用于所有组件。
 
 ```tsx
 // React.memo
-import React, { memo } from "react";
-const MyComponent = React.memo(({ prop1, prop2 }) => {
-  // 组件逻辑
-});
-const App = () => {
-  return <MyComponent prop1="value1" prop2="value2" />;
-};
+import { memo, useMemo, useState } from "react";
 
-// useMemo
-import React, { useMemo, useState } from "react";
+const MyComponent = memo(({ total }: { total: number }) => {
+  return <p>总计：{total}</p>;
+});
+
 const App = () => {
-  const [count, setCount] = useState(0);
-  const memoizedValue = useMemo(() => count, [count]);
-  return <div>{memoizedValue}</div>;
+  const [prices, setPrices] = useState([10, 20, 30]);
+  const total = useMemo(
+    () => prices.reduce((sum, price) => sum + price, 0),
+    [prices],
+  );
+
+  return (
+    <>
+      <MyComponent total={total} />
+      <button onClick={() => setPrices((items) => [...items, 40])}>添加</button>
+    </>
+  );
 };
 ```
 
 ::: warning React的渲染条件是什么?
 
-1. 组件的 `props` 发生变化
-2. 组件的 `state` 发生变化
-3. `useContext` 发生变化
+1. 组件自身 state 更新。
+2. 组件读取的 Context 值变化。
+3. 父组件重新渲染时，默认也会继续渲染其子组件；`memo` 可以在 props 未变化时跳过这一过程。
+4. 外部 store 的订阅快照发生变化等其他更新来源。
    :::
 
 ### useCallback 性能优化
 
-`useCallback` 用于优化性能，返回一个记忆化的回调函数，可以减少不必要的重新渲染，也就是说它是用于缓存组件内的函数，避免函数的重复创建。
+`useCallback` 返回一个在依赖不变时保持引用相同的函数。它常与 `memo`、其他 Hook 的依赖数组或需要稳定回调引用的 API 配合使用。
 
-在React中，函数组件的重新渲染会导致组件内的函数被重新创建，这可能会导致性能问题。`useCallback` 通过缓存函数，可以减少不必要的重新渲染，提高性能。
+组件每次渲染时仍会创建传给 `useCallback` 的函数表达式；React 只是决定返回上次缓存的函数引用还是本次的新函数。单独使用它不会阻止组件渲染，也不一定能提高性能。
 
 #### 用法
 
@@ -931,8 +1028,10 @@ const memoizedCallback = useCallback(() => {
 }, [a, b]);
 ```
 
-:::info `useCallback` 和 `useMemo` 的区别  
-111
+:::info `useCallback` 和 `useMemo` 的区别
+
+- `useMemo(() => value, deps)` 缓存计算结果。
+- `useCallback(fn, deps)` 缓存函数引用，等价于 `useMemo(() => fn, deps)`。
 :::
 
 ### useDebugValue
@@ -942,8 +1041,10 @@ const memoizedCallback = useCallback(() => {
 #### 用法
 
 ```ts
-const debugValue = useDebugValue(value);
+useDebugValue(value, formatValue);
 ```
+
+`useDebugValue` 没有返回值，应在自定义 Hook 顶层调用。可选的格式化函数只在 React DevTools 读取调试值时执行，适合格式化成本较高的情况。
 
 ### useId
 
@@ -953,8 +1054,9 @@ const debugValue = useDebugValue(value);
 
 ```ts
 const id = useId();
-// 返回值: :r0: 多次调用值递增
 ```
+
+返回值的具体格式属于 React 实现细节，不应解析或依赖；`useId` 主要用于关联 `label` 与表单控件、ARIA 属性等。它不应用来生成列表的 `key`，列表 key 应来自数据本身。
 
 ## 组件
 
@@ -974,9 +1076,9 @@ export default function App() {
 ```
 
 1. props基本用法
-2. 泛型:
-   - 可以选择给 interface安装给props 添加类型.
-   - 可以使用`React.FC` (Function Component)
+2. TypeScript 类型:
+   - 可以使用 `interface` 或 `type` 为 props 添加类型。
+   - 可以直接标注函数参数，也可以使用 `React.FC`（Function Component）；`React.FC` 不是必需的。
 3. 默认值:
    - 解构
    - 声明一个默认对象
@@ -986,9 +1088,9 @@ export default function App() {
 
 #### 兄弟组件通信
 
-- 原理就是 `发布订阅` 设计模式
-- 也可以先传给上层组件, 然后再通过 `context` 传给下层组件
-- 也可以使用 `mitt`
+- 最常见的方式是把共享状态提升到最近的共同父组件，再通过 props 和回调分别传给两个子组件。
+- 跨越较深组件层级时，可以把共享状态和更新函数放入 Context。
+- 需要与 React 组件树之外的事件源通信时，也可以使用 `mitt` 等发布订阅工具，但兄弟组件通信本身并不等同于发布订阅模式。
 
 ### 受控组件 非受控组件
 
@@ -1069,15 +1171,15 @@ export default App;
 
 ### 异步组件
 
-`Suspense` 是一种异步渲染机制，其核心理念是在组件加载或数据获取过程中，先展示一个占位符（loading state），从而实现更自然流畅的用户界面更新体验。
+`Suspense` 是 React 用来协调“渲染期间尚未就绪的内容”的边界。当子树发生挂起时，它会暂时显示 `fallback`，待所需代码或数据就绪后再展示内容。
 
 #### 应用场景
 
 - `异步组件加载`：通过代码分包实现组件的按需加载，有效减少首屏加载时的资源体积，提升应用性能。
 
-- `异步数据加载`：在数据请求过程中展示优雅的过渡状态（如 loading 动画、骨架屏等），为用户提供更流畅的交互体验。
+- `异步数据加载`：读取 Suspense-enabled 框架提供的数据，或使用 `use` 读取已缓存、可复用的 Promise。普通 `useEffect` 中发起的 fetch 不会自动激活 Suspense。
 
-- `异步图片资源加载`：智能管理图片资源的加载状态，在图片完全加载前显示占位内容，确保页面布局稳定，提升用户体验。
+- `样式、流式服务端渲染等资源协调`：具体能力取决于 React 版本和渲染环境。普通 `<img>` 加载并不会自动触发 Suspense；图片等待目前只在特定 View Transition/Canary 场景中提供。
 
 #### 用法
 
@@ -1093,13 +1195,13 @@ export default App;
 
 #### 案例 骨架屏
 
-`use` API 用于获取组件内部的Promise,或者Context的内容，该案例使用了use获取Promise返回的数据并且故意延迟2秒返回，模拟网络请求。
+`use` API 可以在组件中读取 Promise 或 Context。读取未完成的 Promise 时会挂起到最近的 Suspense 边界；这个 Promise 应由框架、服务端组件或组件外部的缓存创建并复用，不要在每次客户端渲染时临时创建新 Promise。
 
 ### HOC 高阶组件 (面试)
 
 什么是高阶组件？
 
-高阶组件就是一个组件，它接受另一个组件作为参数，并返回一个新的组件，（如果你学过Vue的话，跟Vue中的二次封装组件有点类似）新的组件可以复用旧组件的逻辑，并可以添加新的功能。常用于类组件中，虽然目前都是hooks写法会缩小HOC的使用场景，但还是有部分场景会用到。
+高阶组件（HOC）不是某个特殊组件，而是“接收组件并返回新组件的函数”。返回的包装组件可以复用横切逻辑、注入 props 或添加行为。Hooks 减少了部分 HOC 的使用场景，但权限、埋点和第三方库适配等场景仍可能使用它。
 
 ### Activity (19.2)
 
@@ -1110,11 +1212,13 @@ export default App;
 - 预渲染可能即将显示的内容
 - 加快页面加载过程中的交互速度
 
-类似于vue3的`v-show`
+它在视觉隐藏方面类似 Vue 的 `v-show`，但语义并不相同：隐藏时 React 会清理子树的 Effect，把隐藏内容的更新降为较低优先级，同时保留组件 state 和已有 DOM；再次显示时会重新建立 Effect。
 
 When an Activity boundary is `hidden`, React will visually hide its children using the `display: "none"` CSS property. It will also destroy their Effects, cleaning up any active subscriptions.
 
 ```tsx
+import { Activity } from "react";
+
 <Activity mode={visibility}>
   <Sidebar />
 </Activity>
@@ -1126,11 +1230,11 @@ When an Activity boundary is `hidden`, React will visually hide its children usi
 </Activity>
 ```
 
-## API
+## createPortal API
 
-作用：将一个组件渲染到DOM的任意位置，跟Vue的Teleport组件类似。
+作用：把一段 React 子节点渲染到指定的 DOM 节点，效果与 Vue 的 Teleport 类似。Portal 只改变 DOM 的物理位置；Context、状态归属以及事件冒泡仍遵循 React 组件树。
 
-#### 用法
+### 用法
 
 ```tsx
 /**
@@ -1150,9 +1254,9 @@ const App = () => {
 export default App;
 ```
 
-#### 案例
+### 案例
 
-如果外层有`position: relative` 的样式，那么弹框会相对于外层进行定位，如果外层没有`position: relative` 的样式，那么弹框会相对于`body`进行定位,故此这个Modal不稳定，所以需要使用`createPortal`来将Modal挂载到body上，或者直接将定位改成`position: fixed` , 两种方案。
+绝对定位元素会相对于其包含块定位，祖先元素的定位、变换、裁剪和层叠上下文都可能影响弹框。把 Modal 通过 `createPortal` 挂载到 `document.body`，通常能避开祖先的 `overflow` 和层叠上下文限制；`position: fixed` 也常用于视口级弹框，但某些带 `transform` 等属性的祖先仍可能改变其包含块。
 
 ```tsx
 import "./index.css";
@@ -1189,7 +1293,7 @@ npm install stylus -D # 安装stylus 任选其一
 ```
 
 ::: tip
-在Vite中css Modules 是开箱即用的，只需要把文件名设置为`xxx.module.[css|less|sass|stylus]`，就可以使用css modules了。
+Vite 开箱支持 CSS Modules。把文件命名为 `xxx.module.css`，或使用已安装预处理器对应的扩展名（如 `xxx.module.scss`、`xxx.module.less`），即可按 CSS Module 导入。
 :::
 
 #### 修改css modules 规则
@@ -1198,10 +1302,12 @@ Vite基于`postcss-modules`实现的
 
 ```ts
 // vite.config.ts
+import { defineConfig } from "vite";
+
 export default defineConfig({
   css: {
     modules: {
-      localsConvention: "dashes", // 修改css modules的类名规则 可以改成驼峰命名 或者 xxx-xxx命名等
+      localsConvention: "dashes", // 控制导出类名时是否保留或转换横杠命名
       /**
        * 有四个属性
        * camelCase 会把非驼峰的命名转为驼峰，并保留之前的类名 (例如写横杠 同时支持横杠和驼峰命名)
@@ -1214,20 +1320,11 @@ export default defineConfig({
   },
 });
 
-// 例子
-export default defineConfig({
-  css: {
-    modules: {
-        generateScopedName: '[local]_[hash:base64:5]' // 只保留类名和哈希值
-        // 或者
-        generateScopedName: '[hash:base64:8]' // 只使用哈希值
-        // 或者
-        generateScopedName: '[name]_[local]' // 只使用文件名和类名，没有哈希
-        // 或者
-        generateScopedName: '[local]--[hash:base64:4]' // 自定义分隔符
-    },
-  },
-});
+// generateScopedName 也可以改为以下任一种格式：
+// "[local]_[hash:base64:5]"
+// "[hash:base64:8]"
+// "[name]_[local]"
+// "[local]--[hash:base64:4]"
 ```
 
 #### 维持类名
@@ -1274,8 +1371,8 @@ const App: React.FC = () => {
 
 **缺点**：
 
-- css-in-js 是基于运行时，所以会损耗一些性能(电脑性能高可以忽略)
-- 调试困难，CSS-in-JS 的样式难以调试，因为它们是动态生成的，而不是在 CSS 文件中定义的。
+- 以 styled-components 为代表的运行时 CSS-in-JS 需要在运行时生成和注入样式，会带来一定运行时与包体积成本；编译时 CSS-in-JS 方案则有不同的成本模型。
+- 动态生成的类名和样式可能增加调试、服务端渲染与缓存配置的复杂度，但主流工具通常提供 source map 和开发者工具支持。
 
 #### 案例
 
@@ -1391,7 +1488,7 @@ import styled, { createGlobalStyle } from "styled-components";
 const GlobalStyle = createGlobalStyle`
   body {
     background-color: #f0f0f0;
-  },
+  }
   * {
     margin: 0;
     padding: 0;
@@ -1418,7 +1515,7 @@ export default App;
 
 ```tsx
 import React from "react";
-import styled, { createGlobalStyle, keyframes } from "styled-components";
+import styled, { keyframes } from "styled-components";
 
 const move = keyframes`
   0%{
@@ -1461,7 +1558,7 @@ const div = function (strArr: TemplateStringsArray, ...args: any[]) {
   // strArr：['\n color:red;\n width:', 'px;\n height:', 'px;\n', raw: Array(3)]
   // args：[30, 50]
   return strArr.reduce((result, str, i) => {
-    return result + str + (args[i] || "");
+    return result + str + (args[i] ?? "");
   }, "");
 };
 
@@ -1484,17 +1581,21 @@ console.log(a);
 
 ## React Router
 
-路由有三种模式:
+React Router v7 提供三种逐级增强的使用模式：
 
-- 数据模式(推荐) 类似于`vue-router`
-- 声明模式
-- 框架模式(用的较少)
+- 声明模式：使用 `<BrowserRouter>`、`<Routes>` 等 API 完成基础匹配和导航。
+- 数据模式：在声明模式之上增加 loader、action、pending state、fetcher 等数据能力。
+- 框架模式：在数据模式之上结合 Vite 插件和路由模块，提供类型安全、智能分包以及 SPA、SSR、静态渲染等能力。
+
+三种模式没有统一的“最佳”选择，应根据应用是否需要数据 API、服务端渲染以及对构建架构的控制程度决定。
 
 ### 安装
 
 ```sh
-pnpm add react-router #V7不在需要 react-router-dom
+pnpm add react-router
 ```
+
+v7 的主要 API 已合并到 `react-router`；`react-router-dom` 在 v7 仍作为兼容性重导出包发布，迁移项目可以逐步改用 `react-router`。
 
 ```ts
 // /router/index.ts
@@ -1518,12 +1619,12 @@ export default router;
 
 > 如何初始化? (类似于去Vue3配置`use`)
 
-在App.tsx 中初始化 (只是做初始化 没有类似于`router-view`的功能)
+在 App.tsx 中挂载 `RouterProvider`。它不仅提供路由上下文，也会渲染当前匹配到的路由树；嵌套路由的子级位置再由父路由中的 `<Outlet />` 指定。
 
 ```tsx
 // App.tsx
 import React from "react";
-import { RouterProvider } from "react-router"; // 初始化方法
+import { RouterProvider } from "react-router/dom";
 import router from "./router"; // 引入路由
 const App: React.FC = () => {
   return (
@@ -1573,7 +1674,7 @@ export default About;
 
 **核心特点**：
 
-- 使用HTML5的history API (`pushState`, `replaceState` , `popState`)
+- 使用 HTML History API（`pushState`、`replaceState` 和 `popstate` 事件）
 - 浏览器URL比较纯净 (/search, /about, /user/123)
 - 需要`服务器端支持`(nginx, apache,等)否则会刷新404
 
@@ -1582,13 +1683,13 @@ export default About;
 **核心特点**：
 
 - 使用URL的hash部分(`#/search`, `#/about`, `#/user`)
-- 不需要服务器端支持
-- 刷新页面不会丢失
+- hash 后的内容不会作为 HTTP 请求路径发送给服务器，因此深层路由刷新通常不需要服务器配置 SPA fallback
+- 浏览器刷新后仍能从 URL hash 恢复当前路由
 
 **使用场景**：
 
-- 静态站点托管例如(github pages, netlify, vercel)
-- 不需要服务器端支持
+- 无法为任意路径配置 SPA fallback 的静态托管环境，例如未配置重写规则的 GitHub Pages
+- 能接受 `#` 路由形式，并希望减少服务器重写配置的应用
 
 #### createMemoryRouter
 
@@ -1600,20 +1701,20 @@ export default About;
 
 **使用场景**：
 
-- 非浏览器环境例如(React Native, Electron)
-- 单元测试或者组件测试(Jest, Vitest)
+- 没有地址栏、又只需要内存导航历史的环境
+- 单元测试或者组件测试（Jest、Vitest、Storybook 等）
 
 #### createStaticRouter
 
 **核心特点**：
 
-- 专为`服务端渲染`（SSR）设计
-- 在服务器端匹配请求路径，生成静态 HTML
-- 需与客户端路由器（如 createBrowserRouter）配合使用
+- 专为数据路由器的服务端渲染设计
+- 接收 `createStaticHandler().query(request)` 生成的路由上下文，并与 `StaticRouterProvider` 配合渲染
+- 客户端通常再创建浏览器路由器并使用服务端生成的 hydration 数据完成接管
 
 **使用场景**：
 
-- 服务端渲染应用（如 Next.js 的兼容方案）
+- 自行搭建 React Router 数据模式 SSR 的应用；Next.js 使用自己的路由系统，并不以 `createStaticRouter` 作为兼容方案
 - 需要SEO优化的页面
 
 #### 如何解决刷新404问题
@@ -1625,7 +1726,7 @@ export default About;
 
 #### Layout布局
 
-layout布局中菜单跳转无法使用`NavLink`进行跳转, 因此需要使用编程式导航. `useNavigate`
+布局中的菜单既可以直接使用 `Link`/`NavLink`，也可以在 Ant Design Menu 这类通过回调返回菜单 key 的组件中使用 `useNavigate`。是否使用编程式导航取决于菜单组件的 API，而不是 Layout 本身的限制。
 
 ```tsx
 // 注意: 这个是写在菜单组件中的
@@ -1668,7 +1769,7 @@ export default function Menu() {
 
 **注意事项**:
 
-- 如果父路由的 path 是 `index`开始，所以访问子路由的时候需要加上父路由的path例如 `/index/home` `/index/about`
+- 如果父路由的 `path` 是 `/index`，相对子路由 `home` 会匹配 `/index/home`。这与 `index: true` 的索引路由是两个不同概念。
 - 子路由不需要增加`/`了直接写子路由的`path`即可
 - 子路由默认是不显示的，需要父路由通过 `Outlet` 组件来显示子路由 `Outlet` 就是类似于Vue的`<router-view>`展示子路由的一个容器
 - 子路由的层级可以无限嵌套，但是要注意的是，一般实际工作中就是2-3层
@@ -1677,7 +1778,7 @@ export default function Menu() {
 
 1. `outlet`: 嵌套路由中, 子路由在父路由中应该渲染的位置
 2. 跳转路由:
-   - `<router-link to="/">Home</router-link>`
+   - `<Link to="/">Home</Link>` 或 `<NavLink to="/">Home</NavLink>`
    - 使用 `useNavigate` hook
 3. 获取路由信息: `useLocation` hook
 
@@ -1687,7 +1788,7 @@ export default function Menu() {
 
 布局路由是一种特殊的嵌套路由，父路由可以省略 `path`，这样不会向 URL 添加额外的路径段：
 
-```ts
+```tsx
 const router = createBrowserRouter([
   {
     // path: '/index', //省略
@@ -1736,7 +1837,7 @@ const router = createBrowserRouter([
 
 前缀路由只设置 `path` 而不设置 `Component`，用于给一组路由添加统一的路径前缀：
 
-```ts
+```tsx
 const router = createBrowserRouter([
   {
     path: "/project",
@@ -1761,7 +1862,7 @@ const router = createBrowserRouter([
 
 访问规则如下 `http://localhost:3000/home/123`
 
-```ts
+```tsx
 const router = createBrowserRouter([
   {
     path: "/",
@@ -1783,8 +1884,8 @@ const router = createBrowserRouter([
 import { useParams } from "react-router";
 
 function Card() {
-  let params = useParams(); // { id: '123' }
-  console.log(params.id);
+  const params = useParams<{ id: string }>(); // { id: '123' }
+  return <p>当前 ID：{params.id}</p>;
 }
 ```
 
@@ -1792,8 +1893,8 @@ function Card() {
 
 #### 1. Query参数
 
-```sh
-#多个参数用 `&` 连接
+```text
+# 多个参数用 & 连接
 /about?name=xxx&age=18
 ```
 
@@ -1807,83 +1908,110 @@ const [searchParams, setSearchParams] = useSearchParams(); // 获取路由参数
 跳转方式:
 
 ```tsx
-<NavLink  to="/about?id=123">About</NavLink> //1. NavLink 跳转
-<Link to="/about?id=123">About</Link> //2. Link 跳转
-import { useNavigate } from 'react-router'
-const navigate = useNavigate()
-navigate('/about?id=123') //3. useNavigate 跳转
+import { Link, NavLink, useNavigate } from "react-router";
+
+function QueryLinks() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <NavLink to="/about?id=123">About</NavLink>
+      <Link to="/about?id=123">About</Link>
+      <button onClick={() => navigate("/about?id=123")}>About</button>
+    </>
+  );
+}
 ```
 
 获取参数:
 
 ```tsx
-//1. 获取参数
 import { useSearchParams } from "react-router";
-const [searchParams, setSearchParams] = useSearchParams();
-console.log(searchParams.get("id")); //获取id参数
-// 也可以用set进行修改
-setSearchParams({ id: "456" });
-//2. 获取参数
-import { useLocation } from "react-router";
-const { search } = useLocation();
-console.log(search); //获取search参数 ?id=123
+
+function About() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const id = searchParams.get("id");
+
+  return <button onClick={() => setSearchParams({ id: "456" })}>{id}</button>;
+}
 ```
+
+如果只需要原始查询字符串，也可以通过 `useLocation().search` 获取，例如 `?id=123`。
 
 #### 2. Params参数(动态参数)
 
-```sh
-/user/:city
+```text
+/user/:id
 ```
 
 跳转方式:
 
 ```tsx
-// 遵循RestFul风格
-<NavLink to="/user/123">User</NavLink> //1. NavLink 跳转
-<Link to="/user/123">User</Link> //2. Link 跳转
-import { useNavigate } from 'react-router'
-const navigate = useNavigate()
-navigate('/user/123') //3. useNavigate 跳转
+import { Link, NavLink, useNavigate } from "react-router";
+
+function UserLinks() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <NavLink to="/user/123">User</NavLink>
+      <Link to="/user/123">User</Link>
+      <button onClick={() => navigate("/user/123")}>User</button>
+    </>
+  );
+}
 ```
 
 获取参数:
 
 ```tsx
-import { useParams } from "react-router"; // 获取路由参数
-const { id } = useParams();
-console.log(id); //获取id参数
+import { useParams } from "react-router";
+
+function User() {
+  const { id } = useParams<{ id: string }>();
+  return <p>{id}</p>;
+}
 ```
 
 ::: warning 注意
-只可以传普通类型, 不可以传递对象
+路径参数最终是 URL 字符串。对象需要先序列化并进行 URL 编码，但通常更适合只把稳定 ID 放在路径中，再依据 ID 读取完整数据。
 :::
 
 #### State参数
 
 `state`在URL中`不显示`，但是可以传递参数:
 
-```sh
+```text
 /user
 ```
 
 跳转方式:
 
 ```tsx
-<Link to="/user" state={{ name: 'xxx', age: 18 }}>User</Link> //1. Link 跳转
-<NavLink to="/user" state={{ name: 'xxx', age: 18 }}>User</NavLink> //2. NavLink 跳转
-import { useNavigate } from 'react-router'
-const navigate = useNavigate()
-navigate('/user', { state: { name: 'xxx', age: 18 } }) //3. useNavigate 跳转
+import { Link, useNavigate } from "react-router";
+
+function UserLinks() {
+  const navigate = useNavigate();
+  const state = { name: "xxx", age: 18 };
+  return (
+    <>
+      <Link to="/user" state={state}>User</Link>
+      <button onClick={() => navigate("/user", { state })}>User</button>
+    </>
+  );
+}
 ```
 
 获取参数:
 
 ```tsx
 import { useLocation } from "react-router";
-const { state } = useLocation();
-console.log(state); //获取state参数
-console.log(state.name); //获取name参数
-console.log(state.age); //获取age参数
+
+type UserState = { name: string; age: number };
+
+function User() {
+  const { state } = useLocation();
+  const user = state as UserState | null;
+  return <p>{user?.name ?? "没有导航状态"}</p>;
+}
 ```
 
 #### 总结
@@ -1900,9 +2028,9 @@ React Router 提供了三种参数传递方式，各有特点：
    - 特点：灵活多变，支持多参数
    - 限制：URL可能较长，参数公开可见
 3. State 方式
-   - 适用于：传递复杂数据结构
-   - 特点：支持任意类型数据，参数不显示在URL
-   - 限制：刷新可能丢失，不利于分享
+   - 适用于：同一次浏览器导航中的临时附加信息
+   - 特点：参数不显示在 URL，底层受 History API 的可序列化数据限制，不能传函数、DOM 节点等任意值
+   - 限制：复制 URL、新开标签页或服务端直接访问时无法获得该状态，不应把关键数据只放在 state 中
 
 选择建议：必要参数用 Params(查详情)，筛选条件用 Query(搜索 分页)，临时数据用 State(复杂数据)。
 
@@ -1914,32 +2042,33 @@ React Router 提供了三种参数传递方式，各有特点：
 
 ```ts
 // 通过在路由对象中使用 lazy 属性来实现懒加载。
-import { createBrowserRouter } from 'react-router';
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms)); // 模拟异步请求
+import { createBrowserRouter } from "react-router";
+import Layout from "../pages/Layout";
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 const router = createBrowserRouter([
-    {
-        Component: Layout,
-            {
-                path: 'about',
-                lazy: async () => {
-                    await sleep(2000); // 模拟异步请求
-                    // 使用动态引入的方式 默认会进行代码分包
-                    const Component = await import('../pages/About'); // 异步导入组件
-                    console.log(Component);
-                    return {
-                        Component: Component.default,
-                    }
-                }
-            },
-         }
-      ],
-)
+  {
+    Component: Layout,
+    children: [
+      {
+        path: "about",
+        lazy: async () => {
+          await sleep(2000);
+          const module = await import("../pages/About");
+          return { Component: module.default };
+        },
+      },
+    ],
+  },
+]);
 ```
 
 当切换到 `about` 路由时，才会进行加载
 
 ::: tip
-如果配置了 `loader` 则每次都会进入`loading`状态，如果没有配置 `loader` 则只执行一次。
+路由模块的动态导入通常在首次访问后由模块加载器缓存。`loader` 是否重新执行由导航、提交后的重新验证、`shouldRevalidate` 等因素决定；`useNavigation().state` 会在等待 lazy 路由、loader 或 action 时反映相应的 pending 状态。
 :::
 
 #### 体验优化
@@ -1969,9 +2098,9 @@ export default function Content() {
 }
 ```
 
-### \*路由高级操作
+### 路由数据 API
 
-路由的操作是由两个部分组成的:
+数据模式的重要能力包括：
 
 - `loader`
 - `action`
@@ -1981,7 +2110,7 @@ export default function Content() {
 #### loader
 
 ::: tip
-只有GET请求才会触发loader，所以适合用来获取数据
+loader 负责读取路由数据，会在匹配导航、GET 表单提交、显式重新验证等场景运行。它不是“收到任意 GET 请求就触发”，而是由 React Router 的数据路由流程调用。
 :::
 
 [useLoaderData](https://message163.github.io/react-docs/react/router/hooks/useLoaderData.html)
@@ -2000,14 +2129,10 @@ const router = createBrowserRouter([
     path: "/",
     Component: App,
     loader: async () => {
+      const response = await fetch("/api/users");
+      if (!response.ok) throw new Response("获取用户失败", { status: response.status });
       const data = await response.json();
-      const response = await getUser(data);
-      // 获取数据 可以是调用后端接口获取数据
-      return {
-        // 一定要return出去
-        data: response.list,
-        message: "success", // 自定义的属性
-      };
+      return { users: data.list, message: "success" };
     },
   },
 ]);
@@ -2018,10 +2143,12 @@ const router = createBrowserRouter([
 ```tsx
 //App.tsx
 import { useLoaderData } from "react-router"; // 使用useLoaderData接收数据
+
+type LoaderData = { users: Array<{ id: number; name: string }>; message: string };
+
 const App = () => {
-  const { data, message } = useLoaderData();
-  // 获取数据;
-  return <div>{data}</div>;
+  const { users } = useLoaderData() as LoaderData;
+  return <ul>{users.map((user) => <li key={user.id}>{user.name}</li>)}</ul>;
 };
 ```
 
@@ -2034,7 +2161,7 @@ const App = () => {
 [useActionData](https://message163.github.io/react-docs/react/router/hooks/useActionData.html)
 
 ::: tip
-只有POST DELETE PATCH PUT等请求才会触发action，所以适合用来提交表单
+action 处理发送到路由的非 GET 数据提交，例如 POST、PUT、PATCH、DELETE；GET 表单提交会序列化到 URL 并运行 loader，而不是 action。
 :::
 
 示例:
@@ -2085,12 +2212,8 @@ const router = createBrowserRouter([
         // 定义action 通过request
         action: async ({ request }) => {
           const formData = await request.formData();
-          await createUser(formData);
-          // 创建用户;
-          return {
-            data: table,
-            success: true,
-          };
+          const createdUser = await createUser(formData);
+          return { data: createdUser, success: true };
         },
       },
     ],
@@ -2110,22 +2233,28 @@ POST提交状态: `idle` --> `submitting` --> `loading` --> `idle`
 
 ```tsx
 import { useNavigation, useSubmit } from "react-router";
-const submit = useSubmit();
-const navigation = useNavigation();
 
-return (
-  <div>
-    {navigation.state === "loading" && <div>loading...</div>}
-    <button disabled={navigation.state === "submitting"}>提交</button>
-  </div>
-);
+function SubmitButton() {
+  const submit = useSubmit();
+  const navigation = useNavigation();
+  const isBusy = navigation.state !== "idle";
+
+  return (
+    <button
+      disabled={isBusy}
+      onClick={() => submit({ name: "Alice" }, { method: "post" })}
+    >
+      {navigation.state === "submitting" ? "提交中..." : "提交"}
+    </button>
+  );
+}
 ```
 
 ### 导航
 
-#### link
+#### Link
 
-`Link`组件是一个用于导航到其他页面的组件，他会被渲染成一个特殊的`<a>`标签，跟传统a标签不同的是，他`不会刷新页面`，而是会通过router管理路由。
+`Link` 用于客户端路由导航，最终渲染为 `<a>` 元素。对于由当前路由器处理的地址，它会拦截普通点击并通过路由器更新页面；使用 `reloadDocument`、指向外部地址或浏览器无法接管的点击时，仍会进行文档级导航。
 
 示例:
 
@@ -2140,16 +2269,16 @@ export default function App() {
 参数:
 
 - `to`：要导航到的路径
-- `replace`：是否保留跳转的历史记录 保留则不写`replace`
+- `replace`：为 `true` 时替换当前 history 条目；默认会新增 history 条目
 - `state`：要传递给目标页面的状态(携带参数) <span v-pre>`<Link to="/index/user" state={{id:1}}>`</span>
-- `relative`：相对于当前路径的导航方式 默认是 `route` 绝对路径 还有 `path` 相对路径 在数据模式下自动支持 是否加 `relative='path'` 都可以
+- `relative`：控制相对地址（尤其是 `..`）的解析方式。默认 `route` 按路由层级回退，`path` 按 URL 路径段回退；以 `/` 开头的地址仍是绝对路径
 - `reloadDocument`：跳转页面时是否重新加载页面
 - `preventScrollReset`：跳转后是否阻止滚动位置重置
 - `viewTransition`：是否启用视图过渡
 
-#### navlink
+#### NavLink
 
-和`link`参数一模一样
+`NavLink` 继承 `Link` 的导航能力，并增加 `end`、`caseSensitive` 以及基于 active/pending/transitioning 状态生成 `className`、`style` 或 children 的能力。
 
 ::: tip link和navlink的区别
 
@@ -2168,7 +2297,7 @@ a.active {
 }
 
 a.pending {
-  animate: pulse 1s infinite;
+  animation: pulse 1s infinite;
 }
 
 a.transitioning {
@@ -2179,6 +2308,7 @@ a.transitioning {
 也可以直接用style属性来设置:
 
 ```tsx
+<NavLink
   viewTransition
   style={({ isActive, isPending, isTransitioning }) => {
     return {
@@ -2195,7 +2325,7 @@ a.transitioning {
 
 ::: warning 注意
 
-1. `viewTransition` 需要谷歌111版本才能使用，注意兼容性
+1. `viewTransition` 依赖浏览器 View Transition API，应按目标浏览器范围检查兼容性，并为不支持的环境保留无动画的正常导航体验
 2. `pending`只有数据模式，和框架模式才能使用，声明式路由不能使用
    :::
 
@@ -2205,13 +2335,22 @@ a.transitioning {
 
 > eg: 例如倒计时结束后，自动返回跳转等, 因为这种操作属于逻辑性操作，这时候组件方式的跳转就不合适了，这时候就需要使用编程式跳转。
 
-```ts
+```tsx
+import { useEffect } from "react";
 import { useNavigate } from "react-router";
 
-const navigate = useNavigate();
-setTimeout(() => {
-  navigate("/home", { replace: true });
-}, 1000);
+function AutoBackHome() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      navigate("/home", { replace: true });
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [navigate]);
+
+  return <p>即将返回首页…</p>;
+}
 ```
 
 参数:
@@ -2219,15 +2358,18 @@ setTimeout(() => {
 1. 第一个参数: `to` 跳转的路由 navigate(to)
 
 ```tsx
-import { useNavigate } from "react-router"; // 导入useNavigate
-const navigate = useNavigate(); // 获取navigate函数
-navigate("/home"); // 跳转路由
+import { useNavigate } from "react-router";
+
+function HomeButton() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate("/home")}>首页</button>;
+}
 ```
 
 2. 第二个参数: `options` 配置对象 navigate(to, options)
    - `replace`: 跳转页面的时候，是否替换当前路由
    - `state`: 传递数据，在跳转的页面中使用通过`useLocation`的state属性获取 `navigate('/home',{state:{name:'张三'}});`
-   - `relative`: 跳转的方式，默认是绝对路径，如果想要使用相对路径，需要设置为`relative:'path'`
+   - `relative`: 当 `to` 是相对地址时，控制按路由层级（默认 `route`）还是 URL 路径段（`path`）解析；写成 `/home` 的绝对地址不受此选项影响
    - `preventScrollReset`: 跳转页面的时候，是否阻止滚动重置
    - `viewTransition`: 跳转页面的时候，是否使用过渡动画 `navigate('/home',{viewTransition:true});`
 
@@ -2237,16 +2379,15 @@ navigate("/home"); // 跳转路由
 
 ```tsx
 import { redirect } from "react-router";
-{
+
+const homeRoute = {
   path: "/home",
-  loader: async ({request}) => {
+  loader: async () => {
     const isLogin = await checkLogin();
-    if(!isLogin) return redirect('/login');
-    return {
-        data: 'home'
-    }
-  }
-}
+    if (!isLogin) return redirect("/login");
+    return { data: "home" };
+  },
+};
 ```
 
 ### 边界处理
@@ -2320,7 +2461,7 @@ export default function NotFound() {
 
 #### ErrorBoundary
 
-`ErrorBoundary`是用于捕获路由`loader`或`action`的错误，并进行处理。如果`loader`或`action`抛出错误，会调用`ErrorBoundary`组件。
+路由 `ErrorBoundary` 可以处理路由组件渲染、loader、action 等阶段抛出的错误，并由距离出错路由最近的边界呈现错误 UI。
 
 ```ts
 import NotFound from "../layout/404"; // 404页面组件
@@ -2339,14 +2480,10 @@ const router = createBrowserRouter([
         path: "about",
         Component: About, // 正常展示About
         loader: async () => {
-          //throw new Response('Not Found', { status: 404, statusText: 'Not Found' }); 可以返回Response对象
-          //也可以返回json等等
-          throw {
-            message: "Not Found",
+          throw new Response("Not Found", {
             status: 404,
             statusText: "Not Found",
-            data: "132131",
-          };
+          });
         },
         ErrorBoundary: Error, // 如果loader或action抛出错误，会调用ErrorBoundary组件
       },
@@ -2362,22 +2499,26 @@ const router = createBrowserRouter([
 返回的错误信息可以通过一个hooks获取到:
 
 ```tsx
-import { useRouteError } from "react-router"; // 获取错误信息
+import { isRouteErrorResponse, useRouteError } from "react-router";
 
 export default function Error() {
   const error = useRouteError();
-  return <div>{error.message}</div>;
+  if (isRouteErrorResponse(error)) {
+    return <div>{error.status}：{String(error.data ?? error.statusText)}</div>;
+  }
+  if (error instanceof Error) return <div>{error.message}</div>;
+  return <div>未知错误</div>;
 }
 ```
 
-## Tanstack Router
+## TanStack Router
 
 [Tanstack](https://tanstack.com/)是一个工具集
 
 安装 Tanstack Router :
 
 ```sh
-`pnpx @tanstack/cli create --router-only` # 以cli方式创建
+pnpx @tanstack/cli create --router-only # 以 CLI 方式创建
 
 # 使用手动配置
 pnpm add @tanstack/react-router @tanstack/react-router-devtools
@@ -2404,8 +2545,9 @@ export default defineConfig({
 });
 ```
 
-- 基于`file base`实现路由
-- 新建`routes`文件夹(必须是这个名字), 并在文件夹下创建`__root.tsx`,` index.tsx`, `about.tsx`, 然后修改`main.tsx`文件(使用`__root.tsx`代替`App.tsx`组件)
+- TanStack Router 同时支持文件式和代码式路由；文件式路由是官方推荐的大多数项目起点。
+- Vite 插件默认读取 `src/routes` 并生成 `src/routeTree.gen.ts`，但 `routesDirectory` 和生成文件位置都可以配置。配置目录的根路由文件必须命名为 `__root.tsx`。
+- `__root.tsx` 定义根布局，`src/main.tsx` 仍负责创建并挂载 RouterProvider，并不是把入口文件放进 routes 目录。
 
 ```tsx
 // routes/__root.tsx
@@ -2462,7 +2604,7 @@ function About() {
 ```
 
 ```tsx
-// routes/main.tsx
+// src/main.tsx
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
@@ -2494,11 +2636,11 @@ if (!rootElement.innerHTML) {
 
 ## Zustand 状态管理
 
-1. `轻量级` Zustand 的体积非常小，只有 1kb 左右。
+1. `轻量级` Zustand 的核心 API 和运行时开销较小；实际包体积取决于版本、导入入口、中间件和打包器的 tree-shaking 结果，不应固定表述为某个精确大小。
 2. `简单易用` Zustand 不需要像Redux，去通过`Provider`包裹组件，Zustand提供了简洁的API，能够快速上手。
-3. `易于集成` Zustand 可以轻松的与React 和 Vue 等框架集成。(Zustand也有Vue版本)
-4. `拓展性` Zustand 提供了中间件的概念，可以通过插件的方式扩展功能，例如(持久化, 异步操作, 日志记录)等。
-5. `无副作用` Zustand 推荐使用 `immer`库处理不可变性， 避免不必要的副作用。
+3. `易于集成` `zustand` 包主要面向 React，同时提供 `zustand/vanilla` 的框架无关 store。Vue 适配通常来自独立的社区项目，并不是 Zustand 核心包自带的 Vue API。
+4. `扩展性` Zustand 提供中间件机制，可扩展持久化、Redux DevTools、Immer 更新和选择性订阅等能力；异步 action 本身不要求额外中间件。
+5. `不可变更新` 默认应以不可变方式更新 state；深层结构可以选择 Immer 中间件减少手动复制代码，但 Zustand 并不会因此自动变成“无副作用”。
 
 ### 安装
 
@@ -2509,9 +2651,9 @@ pnpm add zustand
 ### 使用
 
 1. 创建一个store目录, 一个store.ts文件
-2. 初始化仓库 `import { create } from 'zustand'` `create`函数 返回一个回调函数 必须返回一个对象 回调函数接收两个参数`set` `get`
-3. set是一个函数 接收一个参数 参数是一个函数 函数接收一个参数 参数是state
-4. get 接收一个参数 参数是一个state
+2. `create` 接收 state creator。state creator 通常接收 `set`、`get`、`store` 三个参数，并返回初始 state 与 actions。
+3. `set` 可以接收部分 state 对象或 `(state) => partialState` 更新函数；默认只对根层级进行浅合并，第二个参数传 `true` 时才会整体替换 state。
+4. `get()` 不接收 state 参数，调用后返回 store 当前状态。
 
 ```ts
 import { create } from "zustand";
@@ -2579,7 +2721,7 @@ const useUserStore = create<User>((set) => ({
   updateGourd: () =>
     set((state) => ({
       gourd: {
-        // ...state.gourd,  // 需要手动合并状态
+        ...state.gourd, // 嵌套对象需要手动合并
         oneChild: "大娃-超进化",
       },
     })),
@@ -2589,7 +2731,7 @@ export default useUserStore;
 ```
 
 ::: warning
-注意：与`useState`类似, 如果不进行状态合并，其他状态会丢失。每次更新都需要手动合并状态，这在实际开发中会变得很繁琐。
+注意：Zustand 的 `set` 默认会浅合并根 state，所以未返回的根属性会保留；但被替换的嵌套对象不会自动深合并。更新 `gourd.oneChild` 时，需要复制 `state.gourd`，否则 `gourd` 中其他字段会丢失，而且上面的 TypeScript 类型也不会通过检查。
 :::
 
 #### 使用 immer 中间件
@@ -2650,7 +2792,7 @@ const useUserStore = create<User>()(
 
 #### immer 原理剖析
 
-`immer.js` 通过 `Proxy` 代理对象的`所有操作`，实现不可变数据的更新。当对数据进行修改时，`immer` 会创建一个被修改对象的`副本`，并在副本上进行修改，最后返回修改后的`新对象`，而原始对象保持不变。这种机制确保了数据的不可变性，同时提供了直观的修改方式。
+Immer 为 draft 建立 Proxy，在 recipe 中记录对 draft 的读写。当发生修改时，它会复制被修改节点及其祖先路径，并尽量与未修改分支共享引用，最后生成新的不可变结果；原始对象保持不变。Proxy 只是其主要实现机制之一，不能概括为代理 JavaScript 对象的“所有操作”。
 
 `immer` 的核心原理基于以下两个概念：
 
@@ -2663,62 +2805,11 @@ const useUserStore = create<User>()(
    - 通过 Proxy 拦截操作
    - 延迟代理创建
 
-改动第几层对象, 就拷贝到第几层:
+修改深层节点时，从根到该节点路径上的对象都会获得新引用，未修改的兄弟分支通常继续复用原引用：
 
 ```ts
-// 简单实现
+import { produce } from "immer";
 
-/**
- * 主要步骤:
- * 1. 拦截读写操作，把所有的变更存在副本中 创建produce函数
- * 2. 读取(handler)的时候判断是否存在副本中，存在则返回副本中的值，否则返回原值
- * 3. 读取的时候如果是对象，则递归创建代理
- * 4. 返回proxy并且变成原始对象
- */
-type Draft<T> = {
-  -readonly [P in keyof T]: T[P];
-};
-
-function produce<T>(base: T, recipe: (draft: Draft<T>) => void): T {
-  // 用于存储修改过的对象
-  const modified: Record<string, any> = {};
-
-  const handler = {
-    get(target: any, prop: string) {
-      // 如果这个对象已经被修改过，返回修改后的对象
-      if (prop in modified) {
-        return modified[prop];
-      }
-
-      // 如果访问的是对象，则递归创建代理
-      if (typeof target[prop] === "object" && target[prop] !== null) {
-        return new Proxy(target[prop], handler);
-      }
-      return target[prop];
-    },
-    set(target: any, prop: string, value: any) {
-      // 记录修改
-      modified[prop] = value;
-      return true;
-    },
-  };
-
-  // 创建代理对象
-  const proxy = new Proxy(base, handler);
-
-  // 执行修改函数
-  recipe(proxy);
-
-  // 如果没有修改，直接返回原对象
-  if (Object.keys(modified).length === 0) {
-    return base;
-  }
-
-  // 创建新对象，只复制修改过的属性
-  return JSON.parse(JSON.stringify(proxy));
-}
-
-// 使用示例
 const state = {
   user: {
     name: "张三",
@@ -2733,11 +2824,15 @@ const newState = produce(state, (draft) => {
 
 console.log(state); // { user: { name: '张三', age: 25 } }
 console.log(newState); // { user: { name: '李四', age: 26 } }
+console.log(newState === state); // false
+console.log(newState.user === state.user); // false
 ```
+
+一个可用的 Immer 实现还需要为每个嵌套 draft 分别维护修改状态、处理数组与属性描述符、完成终结和结构共享等细节。用单个 `modified` 对象配合 `JSON.parse(JSON.stringify(...))` 无法正确模拟这些语义，还会破坏 `Date`、`Map`、`undefined` 等值，因此不把这种简化代码当作实现示例。
 
 ### 状态简化
 
-在使用zustand时, 通过解构的方式引入状态，但是这样引入会引发一个问题，例如A组件用到了 `hobby.basketball` 状态，而B组件 没有用到 `hobby.basketball` 状态，但是更新 `hobby.basketball` 这个状态的时候，A组件和B组件都会`重新渲染`，这样就导致了不必要的重渲染，因为B组件并没有用到hobby.basketball这个状态。
+不传选择器调用 `useUserStore()` 会订阅整个 store。即使组件只从返回对象中解构少数字段，store 中任意根状态变化都可能使该组件重新渲染。
 
 #### 状态选择器
 
@@ -2747,7 +2842,7 @@ console.log(newState); // { user: { name: '李四', age: 26 } }
 // 本来的写法
 const { hobby, name } = useUserStore();
 // 新写法
-const name = useUserStore((state) => state.name);
+const selectedName = useUserStore((state) => state.name);
 const age = useUserStore((state) => state.age);
 const rap = useUserStore((state) => state.hobby.rap);
 const basketball = useUserStore((state) => state.hobby.basketball);
@@ -2758,7 +2853,7 @@ const basketball = useUserStore((state) => state.hobby.basketball);
 #### useShallow
 
 ::: tip
-`useShallow` 只检查顶层对象的引用是否变化，如果顶层对象的引用没有变化（即使其内部属性或子对象发生了变化，但这些变化不影响顶层对象的引用），使用 `useShallow` 的组件将不会重新渲染
+`useShallow` 会记住选择器结果，并对新旧结果做浅比较：对象的顶层属性、数组元素等逐项使用 `Object.is` 比较。它不做深比较；如果某个顶层属性是对象，仍只比较该对象的引用。
 :::
 
 ```ts
@@ -2797,8 +2892,8 @@ const logger = (config) => (set, get, api) =>
 
 1. config (外层函数参数)
 
-- 类型：函数 (set, get, api) => StoreApi
-- 作用：原始创建 store 的配置函数，由用户传入。中间件需要包装这个函数。
+- 类型：state creator，即 `(set, get, api) => State`
+- 作用：原始的 store 配置函数；中间件包装它及其参数，最终仍返回初始 state。
 
 2. set (内层函数参数)
 
@@ -2813,17 +2908,28 @@ const logger = (config) => (set, get, api) =>
 4. api (内层函数参数)
 
 - 类型：对象 StoreApi
-- 作用：包含 store 的完整 API（如 setState, getState, subscribe, destroy 等方法）。
+- 作用：包含 store API，例如 `setState`、`getState`、`getInitialState` 和 `subscribe`。
 
 #### devtools
 
 devtools 是 zustand 提供的一个用于调试的工具，它可以帮助我们更好地管理状态。
 
 ```ts
-import { devtools } from "zustand/middleware"; // 引入 devtools 中间件 内置
-const useUserStore = create<User>()(
-  immer(
-    devtools(
+import { create } from "zustand";
+import { devtools } from "zustand/middleware";
+import { immer } from "zustand/middleware/immer";
+
+interface UserStore {
+  name: string;
+  age: number;
+  hobby: { sing: string; dance: string; rap: string; basketball: string };
+  setHobbyRap: (rap: string) => void;
+  setHobbyBasketball: (basketball: string) => void;
+}
+
+const useUserStore = create<UserStore>()(
+  devtools(
+    immer(
       (set) => ({
         name: "坤坤",
         age: 18,
@@ -2842,11 +2948,11 @@ const useUserStore = create<User>()(
             state.hobby.basketball = basketball;
           }),
       }),
-      {
-        enabled: true, // 是否开启devtools
-        name: "用户信息", // 仓库名称 (唯一)
-      },
     ),
+    {
+      enabled: true,
+      name: "用户信息",
+    },
   ),
 );
 ```
@@ -2856,10 +2962,21 @@ const useUserStore = create<User>()(
 persist 是 zustand 提供的一个用于`持久化`状态的工具，它可以帮助我们更好地管理状态，默认是存储在 localStorage 中，可以指定存储方式
 
 ```ts
-import { persist } from "zustand/middleware";
-const useUserStore = create<User>()(
-  immer(
-    persist(
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { immer } from "zustand/middleware/immer";
+
+interface UserStore {
+  name: string;
+  age: number;
+  hobby: { sing: string; dance: string; rap: string; basketball: string };
+  setHobbyRap: (rap: string) => void;
+  setHobbyBasketball: (basketball: string) => void;
+}
+
+const useUserStore = create<UserStore>()(
+  persist(
+    immer(
       (set) => ({
         name: "坤坤",
         age: 18,
@@ -2878,22 +2995,23 @@ const useUserStore = create<User>()(
             state.hobby.basketball = basketball;
           }),
       }),
-      {
-        name: "user", // 仓库名称(唯一)
-        storage: createJSONStorage(() => localStorage), // 存储方式 可选 localStorage sessionStorage IndexedDB 默认localStorage
-        partialize: (state) => ({
-          // 按需存储
-          name: state.name,
-          age: state.age,
-          hobby: state.hobby,
-        }), // 部分状态持久化
-      },
     ),
+    {
+      name: "user",
+      // 可省略：默认就是 JSON + localStorage。sessionStorage 可直接替换；
+      // IndexedDB 是异步 API，需要先实现符合 StateStorage 的适配器。
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        name: state.name,
+        age: state.age,
+        hobby: state.hobby,
+      }),
+    },
   ),
 );
 ```
 
-清空缓存Api, 在页面中添加一个按钮，点击按钮清空缓存,在增加persist中间件之后会自动增加一个clearStorage方法,用于清空缓存。
+增加 persist 中间件后，可以通过 `useUserStore.persist.clearStorage()` 删除持久化存储。它只清除 storage 中的数据，不会自动把当前内存 state 重置为初始值；如需同时重置，应另行调用 store 的重置 action。
 
 ```tsx
 import useUserStore from "../../store/user";
@@ -2909,83 +3027,93 @@ const App = () => {
 
 zustand 的 subscribe，可以订阅一个状态，当状态变化时，会触发回调函数。(类似Vue3的watch)
 
-#### 订阅一个状态
+#### 订阅整个 store
 
 只要store 的 `state` 发生变化，就会触发回调函数，另外就是这个订阅可以在`组件内部订阅`，也可以在`组件外部订阅`, 如果在组件内部订阅需要放到useEffect中, 防止重复订阅。
 
 ```tsx
-const store = create((set) => ({
+import { useEffect } from "react";
+import { create } from "zustand";
+
+const useCountStore = create(() => ({
   count: 0,
 }));
 // 外部订阅
-store.subscribe((state) => {
+const unsubscribeOutside = useCountStore.subscribe((state) => {
   console.log(state.count);
 });
+
 // 组件内部订阅
-useEffect(() => {
-  store.subscribe((state) => {
-    console.log(state.count);
-  });
-}, []); // 空数组代表组件渲染完成后执行, 且只执行一次
+function CountLogger() {
+  useEffect(() => {
+    return useCountStore.subscribe((state) => {
+      console.log(state.count);
+    });
+  }, []);
+
+  return null;
+}
+
+// 模块级订阅不再需要时也应调用：unsubscribeOutside();
 ```
 
 #### 案例
 
-比如我们需要观察年龄的变化，大于等于26 就提示可以结婚了，小于26 就提示还不能结婚，如果使用选择器的写法，age每次更新都会重新渲染组件，这样就会导致组件的频繁渲染。
+假设 UI 只关心年龄是否达到某个业务阈值。如果直接选择 `age`，每次年龄变化都会重新渲染组件：
 
 ```tsx
-const store = create((set) => ({
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
+
+const useAgeStore = create(() => ({
   age: 0,
 }));
-//组件里面 age 每次更新都会重新渲染组件
-const { age } = useStore(
-  useShallow((state) => ({
-    age: state.age,
-  })),
-);
+
+function Age() {
+  const { age } = useAgeStore(useShallow((state) => ({ age: state.age })));
+  return <p>{age}</p>;
+}
 ```
 
-性能优化，采用订阅的模式，age 变化的时候，会调用回调函数，但是不会重新渲染组件。
+如果 UI 只关心“是否达到阈值”，可以让选择器直接返回这个布尔结果。默认的 `Object.is` 比较会使组件只在结果从 `false` 变为 `true`（或反向）时重新渲染，而不是每次年龄变化都重新渲染：
 
 ```tsx
-const store = create((set) => ({
+import { create } from "zustand";
+
+const useStore = create(() => ({
   age: 0,
 }));
 
-const [status, setStatus] = useState("单身");
-//只会更新一次组件
-useStore.subscribe((state) => {
-  if (state.age >= 26) {
-    setStatus("结婚");
-  } else {
-    setStatus("单身");
-  }
-});
-return <div>{status}</div>;
+function MarriageStatus() {
+  const canMarry = useStore((state) => state.age >= 26);
+  return <div>{canMarry ? "达到示例阈值" : "未达到示例阈值"}</div>;
+}
 ```
 
 持续优化，目前的订阅只要是store内部任意的state发生变化，都会触发回调函数，我们希望只订阅age的变化，可以使用中间件 `subscribeWithSelector` 订阅单个状态。
 
 ```tsx
+import { useEffect } from "react";
+import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
-const store = create(
+const useStore = create(
   subscribeWithSelector((set) => ({
     age: 0,
     name: "张三",
   })),
 );
-const [status, setStatus] = useState("单身");
-//订阅age的变化 并且组件渲染一次
-useStore.subscribe(
-  (state) => state.age,
-  (age, prevAge) => {
-    if (age >= 26) {
-      setStatus("结婚");
-    } else {
-      setStatus("单身");
-    }
-  },
-);
+function AgeLogger() {
+  useEffect(() => {
+    return useStore.subscribe(
+      (state) => state.age,
+      (age, previousAge) => {
+        console.log(`age: ${previousAge} -> ${age}`);
+      },
+    );
+  }, []);
+
+  return null;
+}
 ```
 
 #### 补充
@@ -3011,7 +3139,7 @@ const unSubscribe = useStore.subscribe(
     console.log(age, prevAge);
   },
   {
-    equalityFn: (a, b) => a === b, // 默认是浅比较，如果需要深比较，可以传入一个比较函数
+    equalityFn: Object.is, // 默认也是 Object.is；需要其他语义时可传自定义比较函数
     fireImmediately: true, // 默认是false，如果需要立即触发，可以传入true
   },
 );

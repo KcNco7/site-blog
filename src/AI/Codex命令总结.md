@@ -68,13 +68,15 @@
 | `/feedback` | 提交反馈，可附日志 |
 | `/logout` | 退出登录 |
 
-## 五、IDE 扩展中常见命令
+---
+
+## Codex IDE 扩展中的常见命令
 
 IDE 扩展里的命令集和 CLI 不完全一样，常见的有：
 
 | 命令 | 用途 |
 | --- | --- |
-| `/auto-context` | 自动带上最近文件和 IDE 上下文 |
+| `/ide-context` | 开关共享的 IDE 上下文，例如打开的文件和当前选区 |
 | `/cloud` | 切换到云端执行 |
 | `/cloud-environment` | 选择云端环境 |
 | `/local` | 切回本地执行 |
@@ -83,9 +85,9 @@ IDE 扩展里的命令集和 CLI 不完全一样，常见的有：
 | `/feedback` | 提交反馈 |
 | `/goal` | 设置持续目标 |
 
-## 六、Codex App 中常见命令
+## Codex App（桌面 App）中的常见命令
 
-Codex App 里常见的命令更偏任务和状态管理：
+桌面 App 里常见的命令更偏任务和状态管理；实际可用项会随运行环境和账号权限变化：
 
 | 命令 | 用途 |
 | --- | --- |
@@ -96,14 +98,14 @@ Codex App 里常见的命令更偏任务和状态管理：
 | `/mcp` | 查看 MCP 连接状态 |
 | `/feedback` | 提交反馈 |
 
-## 七、使用时需要注意
+## 使用这些命令时的注意事项
 
 - 命令是否可用，和你所在的界面有关，比如 `CLI`、`IDE 扩展`、`Codex App`。
 - 同名命令在不同界面里，显示的信息和行为可能略有区别。
 - 某些命令受模型、权限模式、实验特性或功能开关影响，不一定每个用户都能看到。
 - `/clear` 是 CLI 里的命令，不应默认认为在 App 或 IDE 中也存在。
 
-## 八、建议优先记住的 15 个命令
+## 建议优先掌握的 15 个命令
 
 如果你主要在 CLI 里用 Codex，优先记这几个：
 
@@ -128,4 +130,3 @@ Codex App 里常见的命令更偏任务和状态管理：
 - CLI slash commands: <https://developers.openai.com/codex/cli/slash-commands>
 - IDE slash commands: <https://developers.openai.com/codex/ide/slash-commands>
 - Codex App commands: <https://developers.openai.com/codex/app/commands>
-

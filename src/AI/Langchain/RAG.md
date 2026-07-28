@@ -1,13 +1,12 @@
 # RAG 完整知识（概念 + 手写 Demo + LangChain.js v1 实战）
 
-> 本文整合三份材料：RAG 完全指南（概念）、零依赖手写 Demo（Python/TypeScript）、以及 LangChain.js v1 实战（LCEL）。
-> 读完你能：一分钟讲清 RAG 是什么、画出完整数据流、亲手跑通最小 demo、把手写版迁移到真实框架、并知道回答错了先查哪里。
+> 本篇聚焦 RAG 的概念、边界和常见数据流。Python/TypeScript 演示、LangChain.js 实战与评估优化分别放在本系列后续文章。
 
 ---
 
-# 第一部分 · 概念
+## 第一部分 · 概念
 
-## 1. 什么是 RAG
+### 1. 什么是 RAG
 
 RAG 是 `Retrieval-Augmented Generation`（检索增强生成）的缩写。它做三件事：
 
@@ -19,7 +18,7 @@ RAG 是 `Retrieval-Augmented Generation`（检索增强生成）的缩写。它�
 
 > **RAG = 让大模型进行一次临时开卷考试。**
 
-### 为什么需要 RAG
+#### 为什么需要 RAG
 
 普通大模型有三个天生的限制：
 
@@ -29,7 +28,7 @@ RAG 是 `Retrieval-Augmented Generation`（检索增强生成）的缩写。它�
 
 RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答有依据。
 
-### 一个直观例子
+#### 一个直观例子
 
 公司手册里写着：
 
@@ -40,15 +39,15 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 - **没有 RAG**：模型只能凭印象猜。
 - **有 RAG**：系统先检索到这段原文，模型基于它回答「原则上当年用完，审批后可顺延到次年第一季度」。
 
-### 记住这几点
+#### 记住这几点
 
 - RAG 是让模型**使用外部知识**，不是训练模型
 - 主要用于「基于资料回答问题」
-- **检索质量直接决定回答质量**——检索错了，再强的模型也救不回来
+- 检索质量是回答质量的重要因素，但生成模型、提示词、上下文组织和数据本身同样会影响结果
 
 ---
 
-## 2. RAG 不等于微调（最重要的辨析）
+### 2. RAG 不等于微调（最重要的辨析）
 
 | | RAG | 微调（Fine-tuning） |
 |---|---|---|
@@ -76,7 +75,7 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 
 ---
 
-## 3. RAG 的核心组成（7 个部件）
+### 3. 常见 2-step RAG 的组成
 
 | 部件 | 职责 | 一句话 |
 |---|---|---|
@@ -88,15 +87,15 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 | 6. Prompt | 把上下文 + 问题 + 规则组织成模型输入 | 组织证据 |
 | 7. 大模型 | 基于 Prompt 生成最终答案 | 输出答案 |
 
-注意分工：**大模型不负责去数据库里搜**，它只负责基于已经给它的上下文组织回答。
+在这种 2-step 流程里，检索器先找资料，大模型再基于上下文回答。Agentic RAG 中，模型也可以参与查询改写、选择检索工具或决定是否继续检索；协议和架构并不要求模型永远只负责最后生成。
 
 ---
 
-## 4. RAG 数据流：离线 + 在线两个阶段
+### 4. 常见向量检索 RAG：离线 + 在线两个阶段
 
 这是 RAG 最该刻进脑子的一张图。
 
-### 离线阶段（准备知识库，用户提问之前）
+#### 离线阶段（准备知识库，用户提问之前）
 
 ```
 文档  →  清洗  →  Chunk 切分  →  生成 Embedding  →  存入向量数据库
@@ -106,13 +105,13 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 - **清洗**：去乱码、去重、修复格式，**保留标题/来源/章节等元数据**（元数据在过滤检索和追溯原文时非常有用，别丢）
 - **切分 / 向量化 / 入库**：见第 5 章
 
-### 在线阶段（回答用户问题）
+#### 在线阶段（回答用户问题）
 
 ```
 问题  →  问题向量化  →  检索相似 chunk  →  构造 Prompt  →  模型生成答案
 ```
 
-### 关键认知
+#### 关键认知
 
 > **离线准备决定基础，在线回答决定体验。**
 
@@ -120,9 +119,9 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 
 ---
 
-## 5. 主链路逐个拆解
+### 5. 主链路逐个拆解
 
-### 5.1 Chunk 切分
+#### 5.1 Chunk 切分
 
 **Chunk** 就是从文档切出来的一小段文本。为什么不直接拿整篇去检索？整篇太长、噪声多；用户问题通常只对应文档的一小部分；检索在小单位上更准。
 
@@ -143,7 +142,7 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 
 初学起手策略：**先按段落切 → 段落太长再按固定长度切 → 加少量 overlap。**
 
-### 5.2 Embedding 向量化
+#### 5.2 Embedding 向量化
 
 **Embedding** = 把一段文本映射成一串表示其语义的数字向量，比如 `[0.12, -0.48, 1.03, ...]`（示意，不代表真实长度）。
 
@@ -161,13 +160,13 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 
 **Embedding 不是万能的**，它在这些场景容易翻车：专业术语理解不准、短文本歧义、数字/代码/编号类匹配不稳定。所以真实系统常把向量检索 + 关键词检索结合（见 5.4）。
 
-### 5.3 向量数据库
+#### 5.3 向量数据库
 
 存三样东西：chunk 文本、对应向量、元数据。支持「拿一个问题向量去找最相近的几个 chunk 向量」。
 
 > **向量数据库 = 存和查语义向量的地方。**
 
-### 5.4 检索机制（决定系统上限的一步）
+#### 5.4 检索机制（影响系统质量的关键步骤）
 
 检索器要回答三个问题：**去哪里找 / 怎么找 / 返回几条**。
 
@@ -187,13 +186,11 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 - **召回**：该找回来的内容有没有找回来
 - **精度**：找回来的内容是不是大多真的相关
 
-> RAG 最怕「没召回到正确内容」——因为模型再强也编不出可靠依据。
+> 漏召回会使系统缺少必要证据；噪声、错误资料或错误排序同样可能严重误导生成结果，具体优先级取决于任务风险和评估指标。
 
-**为什么说检索决定上限**：
+检索提供事实基础，生成层负责理解、整合和表达。任何一层出错都可能导致失败，因此应分别评估检索与生成，而不是把质量上限只归因于单一环节。
 
-> **生成层决定表达质量，检索层决定事实基础。** 检索错了或不全，模型只能答错、答含糊，或被噪声误导。
-
-### 5.5 生成回答
+#### 5.5 生成回答
 
 生成阶段的输入通常有三部分：**系统指令（回答规则） + 检索到的上下文 + 用户问题**。
 
@@ -215,14 +212,14 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 
 ---
 
-## 6. 最小 RAG 系统：到底需要什么
+### 6. 最小 RAG 系统：到底需要什么
 
-一个「最小可用」的 RAG 只需要 5 样东西：
+一个常见的向量检索 RAG 原型可以包含 5 样东西：
 
 1. 一小批文档
 2. 一种 chunk 切分方法
-3. 一个 embedding 方式
-4. 一个向量数据库 / 检索存储层
+3. 一种检索表示方式（可以是关键词索引，也可以是 embedding）
+4. 一个可查询的检索层；小规模原型不一定需要独立向量数据库
 5. 一个负责回答的大模型
 
 **第一版要证明的唯一一件事**：
@@ -237,13 +234,15 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 
 ---
 
-# 第二部分 · 动手实战：跑通最小 RAG
+---
 
-## 7. 零依赖手写版（看清每一步）
+## 第二部分 · 动手实战：跑通最小 RAG
 
-下面是一个**零依赖**的最小 RAG demo，Python 和 TypeScript 两个版本逻辑完全一致。它用「词频向量 + 余弦相似度」代替真实 embedding——不是生产方案，只是为了让你在不装任何库、不花一分钱的情况下，先把整条链路跑通、看清楚。
+### 7. 手写版（看清每一步）
 
-### 7.1 准备知识库 `data/knowledge.txt`（两个版本共用）
+下面是一个不依赖第三方检索库的教学 demo，Python 和 TypeScript 两个版本逻辑一致。它用「词频向量 + 余弦相似度」代替真实 embedding，并用规则拼接代替生成模型，因此严格说只是“检索 + 上下文展示”的玩具链路，不是完整的生成式 RAG。TypeScript 版本仍需要 Node.js 和 TypeScript 执行工具。
+
+#### 7.1 准备知识库 `data/knowledge.txt`（两个版本共用）
 
 ```text
 公司请假制度
@@ -269,7 +268,7 @@ RAG 就是在每次提问时，**临时**给模型补充外部知识，让回答
 餐饮报销应符合公司标准，超出标准部分需要额外说明并走特殊审批流程。
 ```
 
-### 7.2 Python 版 `app.py`
+#### 7.2 Python 版 `app.py`
 
 ```python
 from __future__ import annotations
@@ -348,18 +347,20 @@ python app.py "年假可以跨年吗？"
 
 你会看到：切出了几个 chunk → 检索到哪两段、分数多少 → 基于这两段拼出的回答。**重点不是回答多漂亮，而是你能看到「它用了哪些证据」**，这就是 RAG 可观察性的起点。
 
-### 7.3 TypeScript 版 `app.ts`
+#### 7.3 TypeScript 版 `app.ts`
 
 逻辑和 Python 版完全一致，同样零依赖，用 Node 内置的 `fs`/`path` 读文件即可。
 
 ```ts
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
 
 type Vector = Map<string, number>;
 type RetrievalResult = { score: number; chunk: string };
 
-const baseDir = path.resolve(__dirname, "..");
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const baseDir = path.resolve(currentDir, "..");
 const knowledgeFile = path.join(baseDir, "data", "knowledge.txt");
 const topK = 2;
 
@@ -445,19 +446,24 @@ function main(): void {
 main();
 ```
 
-运行（需要先装 Node.js 和 ts-node）：
+运行环境：Node.js 20+，项目使用 ESM。先安装 TypeScript 执行工具：
 
 ```bash
-npx ts-node src/app.ts "年假可以跨年吗？"
+npm i -D typescript tsx @types/node
+npx tsx src/app.ts "年假可以跨年吗？"
 ```
 
 > 关于中文：这个 demo 同时用「连续中文片段 + 双字切片」来提高中文检索命中率——不是标准生产方案，只是让零依赖 demo 在中文下更容易跑通。这也让你第一次看到：**如果文本切分太粗糙，明明在说同一件事也可能算不出相似度**，所以真实 RAG 非常依赖更好的切分和 embedding。
 
 ---
 
-# 第三部分 · 迁移到真实框架（LangChain.js v1）
+---
 
-## 8. 手写版 → LangChain 组件的一一对应
+## 第三部分 · 迁移到真实框架（LangChain.js v1）
+
+运行前提：Node.js 20+、ESM 项目，并安装 `langchain @langchain/core @langchain/openai @langchain/classic @langchain/textsplitters`。聊天模型与 Embedding 可能来自不同提供商，应分别配置 `CHAT_API_KEY` / `CHAT_BASE_URL` 与 `EMBEDDING_API_KEY` / `EMBEDDING_BASE_URL`。DeepSeek 官方 API 当前不提供 OpenAI Embedding 模型，不能把同一个 DeepSeek 地址直接用于下面的 `OpenAIEmbeddings`。
+
+### 8. 手写版 → LangChain 组件的一一对应
 
 手写版帮你理解原理，但它有两个「假」的地方：用词频向量代替真实 embedding，用规则拼接代替真实模型。真实 RAG 会把这些换成标准组件。**RAG 是方法，LangChain 是实现这个方法的框架——LangChain 没有发明 RAG，只是把零散步骤封装成可替换的组件。**
 
@@ -473,7 +479,7 @@ npx ts-node src/app.ts "年假可以跨年吗？"
 
 > 先写手写版，你会知道**每一步为什么存在、出错会怎么坏**；再看 LangChain 就不会把它当黑盒。**手写版学原理，LangChain 版学工程组件怎么拼起来。**
 
-## 9. 核心概念三件套
+### 9. 核心概念三件套
 
 | 概念 | 作用 | 类比 |
 |---|---|---|
@@ -481,7 +487,7 @@ npx ts-node src/app.ts "年假可以跨年吗？"
 | **Vector Store（向量库）** | 存向量 + 支持「找最相似的 K 个」 | 按语义检索的数据库 |
 | **Retriever（检索器）** | 输入问题，吐出相关文档块 | 图书管理员 |
 
-### 为什么 Vector Store 和 Retriever 要拆开
+#### 为什么 Vector Store 和 Retriever 要拆开
 
 在手写版里 `retrieve` 一个函数干了两件事，但 LangChain 把它拆成两层：
 
@@ -495,9 +501,9 @@ npx ts-node src/app.ts "年假可以跨年吗？"
 
 > **Vector Store = 存和查；Retriever = 问题进来，统一返回相关文档。**
 
-## 10. v1 实战：切块与建库
+### 10. v1 实战：切块与建库
 
-### 10.1 切块（Text Splitting）
+#### 10.1 切块（Text Splitting）
 
 v1 用 `@langchain/textsplitters`。
 
@@ -514,7 +520,7 @@ console.log(docs.length, "个块");
 console.log(docs[0]); // Document { pageContent: "...", metadata: {} }
 ```
 
-### 10.2 Embedding + 向量库
+#### 10.2 Embedding + 向量库
 
 用 `MemoryVectorStore`（内存向量库，最适合学习/原型）。
 
@@ -527,9 +533,9 @@ import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 
 const embeddings = new OpenAIEmbeddings({
   model: "text-embedding-3-small",        // 第三方支持的 embedding 模型名
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.EMBEDDING_API_KEY,
   configuration: {
-    baseURL: process.env.OPENAI_BASE_URL, // 指向第三方接口
+    baseURL: process.env.EMBEDDING_BASE_URL, // 指向支持 Embedding 的接口
   },
 });
 
@@ -542,7 +548,7 @@ const vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
 > - 如果 embedding 走的是另一个地址，单独给 `OpenAIEmbeddings` 传它自己的 `configuration.baseURL`。
 > - 建库（写入）和查询（检索）**必须用同一个 embedding 模型**，否则向量不在同一空间，检索全乱。
 
-### 10.3 检索（Retriever）
+#### 10.3 检索（Retriever）
 
 ```ts
 const retriever = vectorStore.asRetriever({
@@ -553,9 +559,9 @@ const found = await retriever.invoke("什么是 Agent？");
 found.forEach((d) => console.log("→", d.pageContent.trim()));
 ```
 
-## 11. 组装完整 RAG 链
+### 11. 组装完整 RAG 链
 
-### 11.1 LCEL 写法（标准做法）
+#### 11.1 LCEL 写法（标准做法）
 
 **用 `.pipe()` / `RunnableSequence` 手动拼链**，不要用已废弃的 `RetrievalQAChain`。
 
@@ -566,9 +572,10 @@ import { RunnableSequence, RunnablePassthrough } from "@langchain/core/runnables
 import { initChatModel } from "langchain";
 import type { Document } from "@langchain/core/documents";
 
-const model = await initChatModel("openai:deepseek-chat", {
+const model = await initChatModel("openai:deepseek-v4-flash", {
   temperature: 0,
-  configuration: { baseURL: process.env.OPENAI_BASE_URL },
+  apiKey: process.env.CHAT_API_KEY,
+  configuration: { baseURL: process.env.CHAT_BASE_URL },
 });
 
 // 把检索到的文档块拼成一段上下文文本
@@ -605,7 +612,7 @@ const answer = await ragChain.invoke({ question: "什么是 RAG？" });
 console.log(answer);
 ```
 
-### 11.2 更简洁的写法（推荐入门用这个）
+#### 11.2 更简洁的写法（推荐入门用这个）
 
 `RunnableSequence` 展示了原理但啰嗦。实际可以用普通 async 函数包起来，更直观：
 
@@ -616,7 +623,7 @@ async function ask(question: string): Promise<string> {
 
   const messages = await prompt.invoke({ context, question });
   const res = await model.invoke(messages);
-  return res.content as string;
+  return res.text;
 }
 
 console.log(await ask("Agent 是做什么的？"));
@@ -626,7 +633,7 @@ console.log(await ask("Agent 是做什么的？"));
 >
 > 数据流：`Retriever 找证据 → Prompt 组织证据（上下文 + 问题 + 规则）→ Chat Model 输出答案`。在这种 2-step RAG 里，检索和生成是明确分开的——Chat Model 不负责自己去搜，它拿到的是已经组好的 Prompt。
 
-### 11.3 完整可运行示例
+#### 11.3 完整示例
 
 ```ts
 // src/02-rag.ts
@@ -654,18 +661,18 @@ async function main() {
   // 2. 建库（embedding 走第三方接口）
   const embeddings = new OpenAIEmbeddings({
     model: process.env.EMBEDDING_MODEL ?? "text-embedding-3-small",
-    apiKey: process.env.OPENAI_API_KEY,
-    configuration: { baseURL: process.env.OPENAI_BASE_URL },
+    apiKey: process.env.EMBEDDING_API_KEY,
+    configuration: { baseURL: process.env.EMBEDDING_BASE_URL },
   });
   const store = await MemoryVectorStore.fromDocuments(docs, embeddings);
   const retriever = store.asRetriever({ k: 2 });
 
   // 3. 提示词 + 模型（聊天也走第三方接口）
   const model = new ChatOpenAI({
-    model: process.env.CHAT_MODEL ?? "deepseek-chat",
+    model: process.env.CHAT_MODEL ?? "deepseek-v4-flash",
     temperature: 0,
-    apiKey: process.env.OPENAI_API_KEY,
-    configuration: { baseURL: process.env.OPENAI_BASE_URL },
+    apiKey: process.env.CHAT_API_KEY,
+    configuration: { baseURL: process.env.CHAT_BASE_URL },
   });
   const prompt = ChatPromptTemplate.fromMessages([
     [
@@ -694,9 +701,9 @@ main();
 
 运行：`npx tsx src/02-rag.ts`
 
-## 12. 从玩具到生产：换持久化向量库
+### 12. 从玩具到生产：换持久化向量库
 
-学习用 `MemoryVectorStore`（进程一停数据就没了）。真实项目里把向量库换成持久化的，**其余代码几乎不变**：
+学习用 `MemoryVectorStore`（进程一停数据就没了）。真实项目可换成持久化向量存储，但不同集成在连接、索引、过滤、批量写入和删除语义上存在差异，不能假定只改几行就能安全迁移：
 
 | 场景 | 推荐向量库 | 包 |
 |---|---|---|
@@ -704,13 +711,15 @@ main();
 | 生产/云 | Pinecone、Qdrant | `@langchain/pinecone` 等 |
 | 已有 Postgres | pgvector | `@langchain/community` |
 
-换库只改「建库 + 检索器」那几行，`asRetriever()` 之后的链完全复用 —— 这就是 LCEL 组合式设计的好处。
+Retriever 抽象有助于复用上层链，但上线前仍需完成数据迁移或重建索引、维度与距离度量核对、认证与 TLS、租户隔离、备份恢复、容量与费用评估，并防止不可信文档中的提示注入和越权检索。
 
 ---
 
-# 第四部分 · 评估、优化、排错
+---
 
-## 13. RAG 评估：必须分层看
+## 第四部分 · 评估、优化、排错
+
+### 13. RAG 评估：必须分层看
 
 不要只看「回答顺不顺」。回答不好，可能坏在文档、chunk、embedding、检索、prompt、生成任何一环。
 
@@ -724,7 +733,7 @@ main();
 
 > **RAG 评估必须分层。先看检索，再看生成，再看整体。**
 
-## 14. RAG 优化方向
+### 14. RAG 优化方向
 
 前提原则：
 
@@ -745,15 +754,13 @@ main();
 
 > **大部分收益来自基础环节，不是花哨技巧。**
 
-## 15. RAG 为什么会失败 + 排查顺序
+### 15. RAG 为什么会失败 + 排查顺序
 
 常见失败原因：文档质量差、chunk 切分不合理、embedding 表示不好、检索错、检索噪声过多、prompt 约束不清、模型脱离上下文乱补。
 
-排查顺序建议：
+排查时通常先保存并检查检索结果，再检查上下文组装和生成；若问题明显来自错误原文、权限过滤或生成格式，也应直接从相应层入手，不必机械遵循固定顺序。
 
-> **先看检索，再看生成。**
-
-## 16. 学习路线（4 阶段）
+### 16. 学习路线（4 阶段）
 
 1. **只做最小 demo**：读文档 → 切 chunk → 检索 → 回答，先跑通
 2. **让系统可观察**：打印检索结果、显示来源、显示 top-k chunk
@@ -764,15 +771,15 @@ main();
 
 ---
 
-## 速记卡（背这些句子就够）
+### 速记卡（背这些句子就够）
 
-- `RAG = 先检索，再生成`
+- 常见 2-step RAG 是先检索再生成；Agentic RAG 可能包含多轮检索与决策
 - `RAG 管的是「知识从哪里来」`
-- `文档 → chunk → embedding → 向量库 → 检索 → 生成`
+- 向量检索链常见为 `文档 → chunk → embedding → 向量存储 → 检索 → 生成`，但 RAG 也可以使用关键词、SQL、图或混合检索
 - `离线准备决定基础，在线回答决定体验`
-- `检索决定上限：生成决定怎么说，检索决定有什么可说`
+- 检索提供证据，生成负责理解与表达，两层都需要独立评估
 - `检索方式有三种：向量、关键词、混合`
-- `检索最怕漏召回，其次怕精度差`
+- 漏召回、噪声、错误排序和越权内容的严重性取决于任务与风险
 - `Chunk 设计很关键，不是越大越好也不是越小越好`
 - `Embedding 是文本的语义向量，但对术语/短文本/编号不稳`
 - `有依据再回答，没依据就承认不知道`
@@ -782,7 +789,7 @@ main();
 - `先看检索，再看生成`
 - `先跑通，再优化，每次只改一个变量`
 
-## 术语表
+### 术语表
 
 | 术语 | 一句话解释 |
 |---|---|

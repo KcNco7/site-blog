@@ -4,7 +4,7 @@
 
 ---
 
-## 0. 环境准备
+## 环境准备
 
 ### 版本基线（LangChain.js v1）
 
@@ -88,11 +88,9 @@ $env:OPENAI_API_KEY="你的第三方key"
 $env:OPENAI_BASE_URL="https://你的第三方地址/v1"   # 注意：大多数服务要带 /v1 后缀
 ```
 
-> `OPENAI_API_KEY` 会被模型类自动读取；但 **`baseURL` 不会自动从环境变量生效**，
-> 必须在代码里显式传 `configuration: { baseURL: ... }`（见下面统一写法）。所以这里把它存进
-> `OPENAI_BASE_URL` 只是为了代码里好引用，变量名你随意。
+> `OPENAI_API_KEY` 通常会被模型类读取。底层 `openai` 客户端支持 `OPENAI_BASE_URL`，但不同 LangChain 集成和版本对环境变量的透传方式可能不同；为了让配置来源清晰，下面仍显式传入 `configuration.baseURL`。
 
-推荐用 `.env` + `process.loadEnvFile()`（Node 20.6+ 内置）或 `dotenv`。
+推荐用 `.env` + `process.loadEnvFile()`（Node v20.12.0 / v21.7.0 起提供）或 `dotenv`。
 
 #### 统一写法
 
@@ -103,7 +101,7 @@ import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 
 // 聊天模型
 const model = new ChatOpenAI({
-  model: "deepseek-chat", // 改成你的第三方支持的模型名
+  model: "deepseek-v4-flash", // 改成你的第三方支持的模型名
   temperature: 0,
   apiKey: process.env.OPENAI_API_KEY,
   configuration: {
@@ -126,22 +124,22 @@ const embeddings = new OpenAIEmbeddings({
 > 1. **不是所有第三方都提供 embedding 接口**。如果你的服务只有 chat、没有 embedding，
 >    RAG 的向量化要换一个支持 embedding 的服务（可以和 chat 用不同的 baseURL/key）。
 > 2. **模型名必须是第三方实际支持的**，`gpt-4o`、`text-embedding-3-small` 只是 OpenAI 官方名，
->    第三方可能叫别的（如 `deepseek-chat`、`bge-m3`）。报 404/model not found 多半是这里。
+>    第三方可能使用不同名称（如 `deepseek-v4-flash`、`bge-m3`）。报 404/model not found 多半是这里。
 >
 > 另：`createAgent` 若用字符串简写（`"openai:gpt-4o"`）**无法指定 baseURL**，
 > 因此 Agent 一律传 new 出来的 **模型实例**。
 
 ---
 
-## 1. 核心心智：一切皆 Runnable
+## 核心心智：统一的Runnable接口
 
 LangChain 不是「一个能聊天的库」，它的本质是：
 
-> **把 LLM 应用拆成可组合的小积木（Runnable），再用管道 `.pipe()` 把它们串起来。**
+> **许多核心组件实现统一的 Runnable 接口，可以用管道 `.pipe()` 组合。**
 
-这套组合语法叫 **LCEL**（LangChain Expression Language）。理解了「一切皆 Runnable、用管道串联」，就掌握了 LangChain 应用开发的核心心智。
+这套组合语法叫 **LCEL**（LangChain Expression Language）。Runnable 是重要的组合抽象，但并非 LangChain 中的所有对象都是 Runnable；配置、消息、文档和普通数据对象等也有各自职责。
 
-所有 Runnable 都共享统一入口：
+Runnable 通常提供这些统一入口：
 
 - `.invoke()`：输入进、输出出（单次）
 - `.stream()`：流式输出
@@ -149,7 +147,7 @@ LangChain 不是「一个能聊天的库」，它的本质是：
 
 ---
 
-## 2. LangChain / LangGraph / Deep Agents 的关系
+## LangChain、LangGraph与Deep Agents的关系
 
 ```text
 LangChain   = LLM 应用开发框架
@@ -201,9 +199,11 @@ import { createDeepAgent } from "deepagents"; // Deep Agents
 
 ---
 
-## 3. 调用模型（Hello World）
+---
 
-### 方式 A：`initChatModel`（v1 推荐，模型无关）
+## 调用模型（Hello World）
+
+### 方式A：`initChatModel`（v1推荐）
 
 `initChatModel` 用一个字符串 `"provider:model"` 就能切换底层模型，代码不用改。
 
@@ -224,13 +224,13 @@ console.log(res.content);
 ```ts
 import { initChatModel } from "langchain";
 
-const model = await initChatModel("openai:deepseek-chat", {
+const model = await initChatModel("openai:deepseek-v4-flash", {
   temperature: 0,
   configuration: { baseURL: process.env.OPENAI_BASE_URL },
 });
 ```
 
-### 方式 B：直接 new 模型类（本教程默认用这个）
+### 方式B：直接实例化模型类（本教程默认）
 
 统一用 OpenAI 格式调第三方接口时，直接 `new ChatOpenAI` 并指定 `baseURL` 最直观：
 
@@ -238,7 +238,7 @@ const model = await initChatModel("openai:deepseek-chat", {
 import { ChatOpenAI } from "@langchain/openai";
 
 const model = new ChatOpenAI({
-  model: "deepseek-chat", // 第三方支持的模型名
+  model: "deepseek-v4-flash", // 第三方支持的模型名
   temperature: 0,
   apiKey: process.env.OPENAI_API_KEY,
   configuration: {
@@ -252,9 +252,9 @@ const model = new ChatOpenAI({
 
 ---
 
-## 4. 消息（Messages）
+## 消息（Messages）
 
-聊天模型的输入不是裸字符串，而是一组消息。三种最常用角色：
+聊天模型既可以接收裸字符串（会被规范化为用户消息），也可以接收显式消息列表。需要系统角色、多轮上下文或多模态内容时，应使用消息：
 
 ```ts
 import {
@@ -280,11 +280,11 @@ const res = await model.invoke([
 ]);
 ```
 
-返回的 `res` 是一条 `AIMessage`：`res.content` 是文本，`res.usage_metadata` 有 token 用量。
+返回的 `res` 是一条 `AIMessage`。`res.content` 可能是字符串，也可能是结构化内容块数组；`usage_metadata` 只有在模型提供商返回用量数据且集成能够映射时才存在。
 
 ---
 
-## 5. Prompt 模板（ChatPromptTemplate）
+## Prompt模板（ChatPromptTemplate）
 
 把可变部分抽成占位符，复用提示词。
 
@@ -309,7 +309,9 @@ console.log(res.content);
 
 ---
 
-## 6. LCEL 管道：把积木串起来（本文重点）
+---
+
+## LCEL管道：把组件串起来
 
 这是 v1 的核心写法。`prompt`、`model`、`parser` 都是 Runnable，用 `.pipe()` 连成一条链：
 
@@ -318,7 +320,7 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { initChatModel } from "langchain";
 
-const model = await initChatModel("openai:deepseek-chat", {
+const model = await initChatModel("openai:deepseek-v4-flash", {
   temperature: 0,
   configuration: { baseURL: process.env.OPENAI_BASE_URL },
 });
@@ -356,9 +358,9 @@ console.log(text); // 直接是 string，不再是 AIMessage 对象
 
 ---
 
-## 7. 流式输出（Streaming）
+## 流式输出（Streaming）
 
-把 `.invoke()` 换成 `.stream()`，拿到一个异步迭代器，逐块打印：
+把 `.invoke()` 换成 `.stream()`，拿到一个异步迭代器，逐块打印。chunk 的边界由模型提供商、传输和解析器决定，不保证逐字返回：
 
 ```ts
 const stream = await chain.stream({
@@ -367,13 +369,13 @@ const stream = await chain.stream({
 });
 
 for await (const chunk of stream) {
-  process.stdout.write(chunk); // 逐字输出，体验类似 ChatGPT 打字机
+  process.stdout.write(chunk);
 }
 ```
 
 ---
 
-## 8. 结构化输出（Structured Output）
+## 结构化输出（Structured Output）
 
 让模型直接返回**类型安全的 JSON 对象**，而不是一段需要你手动解析的文本。用 zod 定义形状，`withStructuredOutput` 绑定。
 
@@ -387,7 +389,7 @@ const Recipe = z.object({
   minutes: z.number().describe("预计耗时（分钟）"),
 });
 
-const model = await initChatModel("openai:deepseek-chat", {
+const model = await initChatModel("openai:deepseek-v4-flash", {
   temperature: 0,
   configuration: { baseURL: process.env.OPENAI_BASE_URL },
 });
@@ -401,13 +403,13 @@ console.log(result.minutes); // number
 // result 完全符合 Recipe 类型，TS 有完整提示
 ```
 
-> 这是从文本里提取实体、把回答格式化成固定结构时的常用手段。
+> 这是从文本里提取实体、把回答格式化成固定结构时的常用手段。第三方 OpenAI 兼容端点不一定支持与 OpenAI 相同的工具调用或 JSON Schema 能力；使用前应核对提供商能力，并保留解析失败处理。
 
 ---
 
-## 9. 批处理（Batch）
+## 批处理（Batch）
 
-一次并发跑多个输入：
+`batch()` 通过 Runnable 接口并发处理多个输入，适合客户端侧批量调用；它不等同于模型提供商的异步 Batch API，也不保证只产生一次网络请求：
 
 ```ts
 const answers = await chain.batch([
@@ -419,7 +421,9 @@ console.log(answers); // [string, string]
 
 ---
 
-## 10. 完整可运行示例
+---
+
+## 完整可运行示例
 
 ```ts
 // src/01-full.ts
@@ -428,7 +432,7 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 
 async function main() {
-  const model = await initChatModel("openai:deepseek-chat", {
+  const model = await initChatModel("openai:deepseek-v4-flash", {
     temperature: 0,
     configuration: { baseURL: process.env.OPENAI_BASE_URL },
   });
@@ -468,7 +472,7 @@ npx tsx src/01-full.ts
 
 ---
 
-## 11. 最小实践路线（按小项目学，而不是只看概念）
+## 最小实践路线
 
 ### 项目 1：模型调用
 
@@ -513,11 +517,11 @@ npx tsx src/01-full.ts
 
 ---
 
-## 本章小结 & 检查清单
+## 小结与检查清单
 
-- [ ] 一切皆 Runnable，统一用 `.invoke()` / `.stream()` / `.batch()`
+- [ ] 识别实现 Runnable 的可组合组件，并按需使用 `.invoke()` / `.stream()` / `.batch()`
 - [ ] 用 `.pipe()`（LCEL）组合链，**不用** `LLMChain`
-- [ ] `initChatModel("provider:model")` 实现模型无关
+- [ ] `initChatModel("provider:model")` 提供统一入口，但切换提供商时仍核对集成包、凭据、模型能力和参数差异
 - [ ] Prompt 用 `ChatPromptTemplate.fromMessages`
 - [ ] 要 JSON 用 `withStructuredOutput(zodSchema)`
 - [ ] 分清三层：LangChain（组件库）/ LangGraph（流程引擎）/ Deep Agents（高级模板）

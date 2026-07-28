@@ -279,6 +279,10 @@ export default defineConfig({
                   text: "Go",
                   link: "/src/backend/Go/go基础.md",
                 },
+                {
+                  text: "Gin",
+                  link: "/src/backend/Go/Gin框架.md",
+                },
               ],
             },
             {

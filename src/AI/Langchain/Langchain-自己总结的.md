@@ -1,6 +1,6 @@
 # Langchain
 
-## Langchain介绍
+## LangChain介绍
 
 ::: danger 什么是Langchain?
 
@@ -19,31 +19,31 @@ LangChain 负责自动化流程，大模型负责理解和生成答案。你学L
 
 :::
 
-`LangChain`是智能体开发平台，包含一套各种帮助开发、测试、评估智能体的框架。核心包括：
+LangChain 生态包含多个职责不同的项目：
 
-- `LangChain`：用于快速构建智能体，可兼容任何模型提供商。
-- `LangGraph`：从底层一步步控制智能体的构建，包括记忆（Memory）、人机协同（HITL）等
-- `Deep Agents`：用于构建复杂的、处理多步骤的任务的智能体
-- `LangSmith`：用于测试、观察、评估、部署智能体
+- `LangChain`：提供模型、消息、Prompt、工具、Agent 和检索等应用组件；支持多个提供商，但切换时仍需安装对应集成并适配模型能力与参数。
+- `LangGraph`：LangChain Agent 底层使用的图运行时，也可直接用于状态、流程控制、持久化和人机协同。
+- `Deep Agents`：基于 LangChain 与 LangGraph 的高层 Agent harness，加入规划、文件系统、子 Agent 等能力。
+- `LangSmith`：独立的可观测、评估与部署平台，可用于 LangChain/LangGraph 应用，但不是 LangChain 运行时的一部分。
 
-而Langchain主要分为以下几个重要部分:
+当前学习时更适合按以下核心能力理解 LangChain：
 
-- Prompts 优化提示词 (提示词工程)
-- Models 调用各类模型
-- History 管理会话历史记录 (记忆)
-- Indexes 管理和分析各类文档
-- Chains 构建功能的执行链条 (核心亮点)
-- Agent 构建智能体
+- Models / Messages：调用模型并表达消息
+- Prompts：模板化构造提示词和消息
+- Tools / Agents：声明工具并让 Agent 编排模型与工具调用
+- Retrieval：文档、切分、Embedding、向量存储与检索器
+- Runnables / LCEL：组合可执行组件
+- Middleware / Memory：控制 Agent 上下文和短期、长期状态
 
-## Agent
+## Agent工作机制
 
 An AI agent is a system that uses an LLM to decide the control flow of an application. (Agent是一种使用大语言模型（LLM）来决定应用程序控制流的系统。)
 
 | 特性     | 传统聊天机器人 / LLM   | AI Agent                       |
 | -------- | ---------------------- | ------------------------------ |
-| 交互模式 | 被动响应，问一句答一句 | 主动规划，以目标为导向         |
-| 执行力   | 停留在文本生成层面     | 能操作软件、发送邮件、分析数据 |
-| 自主性   | 需要人类给出详细步骤   | 只需给定最终目标，自主寻找路径 |
+| 交互模式 | 通常按输入生成响应 | 可在受控循环中决定后续步骤 |
+| 执行力   | 可生成文本或结构化工具调用 | 在应用授权的工具范围内执行动作 |
+| 自主性   | 由调用方编排流程 | 可在迭代、权限和审批边界内规划 |
 
 传统LLM:
 ![LLM](/assert/image-langchain/LLM.png)
@@ -66,7 +66,7 @@ Agent模式:
 
 > 当大模型决定调用某个tool时，该如何调用呢？
 
-模型不能直接调用tool，只能返回字符串。但是它可以把要调用的tool信息、参数信息都以JSON格式返回. 这样一来，`LangChain`就会帮我们解析响应结果中的`Function`信息，也就是`tool`信息，就知道了要调用哪个函数，以及参数是什么了。`LangChain`就会执行该函数，再把得到的结果**再次**发送给大模型。
+模型服务不会直接执行本地函数，而是返回结构化的工具调用请求。现代 LangChain `AIMessage` 会把这些请求规范化到 `tool_calls` 等字段，而不是要求应用从普通 JSON 字符串中自行猜测。Agent 运行时校验参数、调用已注册工具，再把 `ToolMessage` 结果交回模型继续判断。
 
 ![Langchain的主要的工作流程](/assert/image-langchain/Langchain的主要的工作流程.png)
 
@@ -274,13 +274,15 @@ for token,metadata in response:
 - 直接调模型：返回“模型给你的一条回答”
 - 调用 Agent：返回“智能体这次执行过程的状态，最终回答只是其中的一部分”
 
-## Messages
+---
+
+## 消息（Messages）
 
 在调用模型时，发送给LLM的消息、LLM返回的消息都包含以下几部分内容：
 
 - `role`：消息所属角色，可以是system、user、assistant
 - `content`：消息的内容
-- `metadata`（可选）：消息的元数据，例如：消息的ID、消耗的token等
+- 消息 ID、`response_metadata`、`usage_metadata` 等是不同字段；token 用量通常位于 `usage_metadata`，且是否存在取决于提供商返回的数据，不应统一笼统称为 `metadata`
 
 ### 消息类型
 
@@ -289,7 +291,7 @@ for token,metadata in response:
 - AIMessage: role是assistant，代表LLM生成的响应，包含：文本、工具调用、元数据
 - ToolMessage: role是tool，代表工具调用时产生的结果
 
-### 使用
+### 消息的使用
 
 定义工具时，当前官方文档推荐使用 `tool(...)`：
 
@@ -403,7 +405,7 @@ for message in response["messages"]:
 
 LangChain 支持向模型发送多模态消息，比如图片、音频、视频、文本等。但前提是必须是多模态模型才支持。
 
-## Prompts 提示词
+## 提示词（Prompts）
 
 ### 系统提示词
 
@@ -413,7 +415,7 @@ import { ChatDeepSeek } from "@langchain/deepseek";
 
 const agent = createAgent({
   model: new ChatDeepSeek({
-    model: "deepseek-chat",
+    model: "deepseek-v4-flash",
     temperature: 0,
   }),
   tools: [],
@@ -449,7 +451,7 @@ from langchain.messages import HumanMessage
 
 # 创建智能体
 agent = create_agent(
-    model = "deepseek-chat",
+    model = "deepseek:deepseek-v4-flash",
     system_prompt="像海盗一样说话."
 )
 
@@ -460,10 +462,9 @@ for token, metadata in agent.stream(
     print(token.content, end="", flush=True)
 ```
 
-### 通用提示词模板 PromptTemplate
+### 通用提示词模板（PromptTemplate）
 
-提示词优化在模型应用中非常重要，LangChain提供了`PromptTemplate`类，用来协助优化提示词。
-`PromptTemplate`表示提示词模板，可以构建一个自定义的基础提示词模板，支持变量的注入，最终生成所需的提示词。
+提示词设计在模型应用中非常重要。`PromptTemplate` 负责模板化和变量注入，使提示词可复用；它不会自动判断或“优化”提示词质量。
 
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
@@ -499,9 +500,9 @@ async function name() {
 name();
 ```
 
-### FewShot提示词模版
+### Few-shot提示词模板
 
-FewShotPromptTemplate类对象构建需要5个核心参数
+`FewShotPromptTemplate` 的配置取决于示例来源和模板需求。下面示例使用 `examplePrompt`、`examples`、`prefix`、`suffix` 和 `inputVariables`，但这不是所有用法都固定必填的五项清单。
 
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
@@ -545,7 +546,7 @@ console.log(response.content);
 // console.log(JSON.stringify(response.content));
 ```
 
-### 模板类的`format`和`invoke`方法
+### 模板类的`format`与`invoke`方法
 
 `PromptTemplate`和`FewShotPromptTemplate`以及`ChatPromptTemplate`都拥有`format`和`invoke`方法.
 
@@ -554,7 +555,7 @@ console.log(response.content);
 | 功能   | 纯字符串替换，解析占位符生成提示词 | Runnable接口标准方法，解析占位符生成提示词                        |
 | 返回值 | `string`                           | `PromptValue` 对象                                                |
 | 传参   | `.format({ k: v, k: v })`          | `.invoke({ k: v, k: v })`                                         |
-| 解析   | 支持解析 `{variable}` 占位符       | 支持解析 `{variable}` 占位符和 `MessagesPlaceholder` 结构化占位符 |
+| 解析   | 支持解析 `{variable}` 占位符       | 返回对应 PromptValue；`MessagesPlaceholder` 只在由 `ChatPromptTemplate` 声明并传入相应消息变量时生效 |
 
 `FewShotPromptTemplate` --> `BaseStringPromptTemplate` --> `BasePromptTemplate` --> `Runnable`
 
@@ -628,13 +629,15 @@ let res = await model.invoke(response);
 console.log(res.content);
 ```
 
-## Chain 链
+---
 
-### chain的基础使用
+## LCEL链
+
+### 链的基础用法
 
 `将组件串联，上一个组件的输出作为下一个组件的输入`是LangChain 链 (尤其是 `|` 管道链) 的核心工作原理，这也是链式调用的核心价值: 实现数据的自动化流转与组件的协同工作.
 
-核心前提: 即`Runnable`子类对象才能入链(以及callable、Mapping接口子类对象也可加入(后续了解用的不多)) 目前所学习到的组件，均是Runnable接口的子类. 在python中的使用和ts使用有点小区别:
+在 TypeScript 中，LCEL 主要组合实现 Runnable 接口的对象；普通函数可以通过 `RunnableLambda` 适配，对象映射可以通过 `RunnableSequence` 等组合。`callable`、`Mapping` 和“子类对象”是 Python 语境的说法，不应直接套到 TypeScript 类型系统。
 
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
@@ -688,7 +691,7 @@ const stream = await chain.stream({
 });
 
 for await (const chunk of stream) {
-  process.stdout.write(String(chunk.content ?? ""));
+  process.stdout.write(chunk.text);
   // process.stdout.write(...)把内容直接写到终端，不自动换行。
 }
 ```
@@ -754,7 +757,7 @@ for await (const chunk of stream) {
 }
 ```
 
-### JSONOutputParser 和 多模型链
+### JsonOutputParser与多模型链
 
 在前面我们完成了这样的需求去构建多模型链，不过这种做法并不标准，因为: 上一个模型的输出，`没有被处理`就输入下一个模型。
 
@@ -796,6 +799,8 @@ const chain = chatPromptFirst
   .pipe(chatPromptNext)
   .pipe(model)
   .pipe(new StringOutputParser()); // 组装后的链
+
+// JsonOutputParser 只能解析模型实际返回的合法 JSON；生产代码仍应处理解析失败。
 
 // console.log(chain);
 
@@ -872,16 +877,14 @@ for await (const chunk of stream) {
 RunnablePassthrough 是 LangChain LCEL 里的“原样传递器”。它的作用很简单：输入什么，就输出什么。大多数用于: 保留原输入，并往输入对象上追加新字段。
 
 ```ts
-// 导入
 import { RunnablePassthrough } from "@langchain/core/runnables";
 // 最基础例子
 const passthrough = new RunnablePassthrough();
 
-const result = await passthrough.invoke("你好");
-console.log(result); // "你好"
+const passthroughResult = await passthrough.invoke("你好");
+console.log(passthroughResult); // "你好"
 
 // RAG 常见写法
-import { RunnablePassthrough } from "@langchain/core/runnables";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 
@@ -892,7 +895,7 @@ const prompt = ChatPromptTemplate.fromTemplate(`
   `);
 
 // 保留原来的输入 然后新增一个字段
-const chain = RunnablePassthrough.assign({
+const ragChain = RunnablePassthrough.assign({
   context: async (input: { question: string }) => {
     const docs = await retriever.invoke(input.question);
     return docs.map((doc) => doc.pageContent).join("\n");
@@ -902,20 +905,21 @@ const chain = RunnablePassthrough.assign({
   .pipe(model)
   .pipe(new StringOutputParser());
 
-const result = await chain.invoke({
+const ragResult = await ragChain.invoke({
   question: "Chroma 是什么？",
 });
 
 // 另一个简单案例:
-const chain = RunnablePassthrough.assign({
+const addNameLength = RunnablePassthrough.assign({
   nameLength: async (input: { name: string }) => input.name.length,
 });
 
-const result = await chain.invoke({
+const lengthResult = await addNameLength.invoke({
   name: "张三",
 });
 
-console.log(result); //   { name: "张三", nameLength: 2  }
+console.log(ragResult);
+console.log(lengthResult); // { name: "张三", nameLength: 2 }
 ```
 
 `RunnablePassthrough` 配合把向量检索接进 pipe 示例:
@@ -1012,7 +1016,9 @@ const result2 = await objectInputChain.invoke({
 console.log(result2);
 ```
 
-## Memory 短期记忆
+---
+
+## 短期记忆
 
 如果这部分是从 `LangChain` 主路径学习，当前更贴近官方文档的入口是：先用 `createAgent({ checkpointer })` 给 Agent 加短期记忆，再去理解底层的 `LangGraph`。
 
@@ -1085,7 +1091,7 @@ console.log(result.messages.at(-1)?.content);
 
 那就继续往下看更底层的 `LangGraph + StateGraph` 写法。
 
-`StateSchema + MessagesValue` 在当前 `@langchain/langgraph@1.3.2` 里仍然可用，不算过时。下面示例改成 `MessagesAnnotation + Annotation.Root`，因为这是官方 API 文档里更常见的状态定义写法。
+当前 LangGraph v1 文档推荐使用 `StateSchema + MessagesValue` 定义图状态。下面直接使用这套 API，避免混用旧的 `Annotation.Root` 路径。
 
 ### 更底层：LangGraph + StateGraph
 
@@ -1100,12 +1106,13 @@ import {
   MessagesPlaceholder,
 } from "@langchain/core/prompts";
 import {
-  Annotation,
   MemorySaver,
-  MessagesAnnotation,
+  MessagesValue,
   START,
+  StateSchema,
   StateGraph,
 } from "@langchain/langgraph";
+import { z } from "zod/v4";
 import "dotenv/config";
 
 const model = new ChatOpenAI({
@@ -1142,10 +1149,10 @@ const explainChain = chatPromptNext.pipe(model).pipe(new StringOutputParser());
 
 // 给 LangGraph 定义“图的状态结构” 声明每次 graph 运行时，state 里有哪些字段
 // State 让 LangGraph 知道 state 长什么样，并让 TypeScript 知道 state.lastname、state.gender 是字符串。
-const State = Annotation.Root({
-  ...MessagesAnnotation.spec,
-  lastname: Annotation<string>,
-  gender: Annotation<string>,
+const State = new StateSchema({
+  messages: MessagesValue,
+  lastname: z.string(),
+  gender: z.string(),
 });
 
 //  LangGraph 里的一个节点函数：callModel。它的作用是：根据当前状态里的姓氏、性别和历史消息，先让模型起名，再让模型解释名字含义，最后把这轮对话写回 messages 状态中
@@ -1208,13 +1215,27 @@ const result = await graph.invoke(
 );
 
 console.log(result.messages.at(-1)?.content);
+
+// 再次使用同一个 thread_id，checkpointer 会加载这个线程此前保存的短期状态。
+const followUp = await graph.invoke(
+  {
+    messages: [{ role: "human", content: "请再给一个不同的名字。" }],
+    lastname: "张",
+    gender: "女儿",
+  },
+  config,
+);
+
+console.log(followUp.messages.at(-1)?.content);
 ```
 
-## Memory 长期记忆
+## 长期记忆
 
 短期记忆用 `checkpointer`，长期记忆用 `LangGraph store`。学习用 `InMemoryStore`，生产用 `PostgresStore / MongoDBStore`。
 
-## RAG
+---
+
+## RAG基础
 
 :::warning 通用的基础大模型存在一些问题
 
@@ -1255,22 +1276,22 @@ RAG 本质上是把“检索”和“生成”组合成一个流程：先检索�
 
 在 RAG 里，判断两段文本“语义相似”通常使用余弦相似度算法：向量方向越接近，语义越相似。
 
-### Document Loaders 文档加载器
+### 文档加载器（Document Loaders）
 
 `Document Loaders` 是 LangChain 里用来读取外部资料，并转换成 LangChain 标准 `Document` 对象的工具。
 
 ```ts
 import { TextLoader } from "@langchain/classic/document_loaders/fs/text";
 
-const loader = new TextLoader("./data.txt");
-const docs = await loader.load();
-console.log(docs);
+const textLoader = new TextLoader("./data.txt");
+const textDocs = await textLoader.load();
+console.log(textDocs);
 
 // PDF
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 
-const loader = new PDFLoader("./example.pdf");
-const docs = await loader.load();
+const pdfLoader = new PDFLoader("./example.pdf");
+const pdfDocs = await pdfLoader.load();
 ```
 
 常见的文档加载器有：
@@ -1285,16 +1306,16 @@ const docs = await loader.load();
 // 安装  npm install @langchain/community d3-dsv@2
 import { CSVLoader } from "@langchain/community/document_loaders/fs/csv";
 
-const loader = new CSVLoader("./data/users.csv");
-const docs = await loader.load();
+const csvLoader = new CSVLoader("./data/users.csv");
+const csvDocs = await csvLoader.load();
 
-console.log(docs[0].pageContent);
-console.log(docs[0].metadata);
+console.log(csvDocs[0].pageContent);
+console.log(csvDocs[0].metadata);
 
 // name age city
 
 // 如果你的 CSV 不是逗号分隔，而是 ; 或 |，可以指定分隔符：
-const loader = new CSVLoader("./data/users.csv", {
+const semicolonLoader = new CSVLoader("./data/users.csv", {
   separator: ";",
 });
 ```
@@ -1325,7 +1346,7 @@ const docs = [
   }),
 ];
 
-const splitter = new RecursiveCharacterTextSplitter({
+const markdownSplitter = new RecursiveCharacterTextSplitter({
   chunkSize: 500, // 表示每个 chunk 的最大长度。默认按字符长度计算，不是 token。
   chunkOverlap: 50, // 表示相邻 chunk 之间重叠多少字符。重叠的作用是保留上下文，避免重要信息刚好被切断。
 });
@@ -1345,17 +1366,17 @@ const splitter = new RecursiveCharacterTextSplitter({
 });
 ```
 
-### Vector Store 向量存储
+### 向量存储（Vector Store）
 
 [官方 LangChain JS Vector Store](https://docs.langchain.com/oss/javascript/integrations/vectorstores)
 
 安装: `npm install @langchain/classic`
 
-Vector Store，中文通常叫“向量存储”或“向量数据库”。它的作用是：`存储文本对应的向量，并支持相似度搜索。`
+Vector Store 通常译为“向量存储”，负责保存向量及其关联数据并提供相似度检索接口。它是抽象能力，不等同于独立运行、可持久化的“向量数据库”；例如 `MemoryVectorStore` 只是进程内实现。
 
 > 为什么需要向量
 
-大模型和向量数据库不能直接理解“语义相似”，所以要先把文本转成数字数组，也就是 embedding。语义相近的文本，向量距离也会更近。
+Embedding 模型负责把文本转换成向量；向量存储根据距离或相似度执行检索；LLM 通常在检索之后基于上下文生成答案。语义相近的文本是否更接近，取决于所用 Embedding 模型及数据分布。
 
 在 RAG 里，它的位置一般是： 原始文档 --> Document Loader 加载 --> Text Splitter 切块 --> Embedding Model 转成向量 --> Vector Store 保存向量 --> Retriever 检索相似内容 --> LLM 根据检索内容回答
 
@@ -1445,7 +1466,7 @@ results = vector_store.similarity_search("什么是 RAG？", k=2)
 print(results)
 ```
 
-### 外部Chroma 存储向量
+### 使用Chroma持久化向量
 
 `Chroma` 是一个真正的向量数据库，常用于 RAG。它和 `MemoryVectorStore` 最大区别是：`MemoryVectorStore` 只存在`内存`里，程序停了就没；`Chroma` 是一个独立的向量数据库服务，可以持久化保存数据。
 
@@ -1521,7 +1542,7 @@ for (const [doc, score] of resultsWithScore) {
 }
 
 // 按 metadata 过滤
-const results = await vectorStore.similaritySearch("什么是 LangChain？", 2, {
+const filteredResults = await vectorStore.similaritySearch("什么是 LangChain？", 2, {
   // 表示只在 metadata.type === "framework" 的文档里搜索
   type: "framework",
 });
@@ -1532,9 +1553,10 @@ const retriever = vectorStore.asRetriever({
   k: 2,
 });
 
-const docs = await retriever.invoke("Chroma 是什么？");
+const retrievedDocs = await retriever.invoke("Chroma 是什么？");
 
-console.log(docs);
+console.log(filteredResults);
+console.log(retrievedDocs);
 
 // 删除文档
 await vectorStore.delete({

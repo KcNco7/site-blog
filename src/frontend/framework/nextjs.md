@@ -1,4 +1,4 @@
-# Nestjs 16
+# Next.js 16
 
 ## 创建项目
 
@@ -10,7 +10,7 @@ pnpm dev
 
 ## Turbopack
 
-Turbopack 是一个`增量打包器`，用于取代 webpack,它是用Rust语言编写, 并且 Turbopack 转换js/ts使用的是SWC, 他比vite快10倍，比webpack快700倍，速度更快，性能更优。
+Turbopack 是用 Rust 编写、面向 JavaScript 和 TypeScript 的增量打包器，并已在 Next.js 16 中成为 `next dev` 与 `next build` 的默认打包器。Webpack 仍可通过 `--webpack` 选用。不同项目、缓存状态和硬件下的性能差异很大，因此不能把“比 Vite 快 10 倍、比 webpack 快 700 倍”当作通用结论。
 
 选择Turbopack的原因
 
@@ -20,7 +20,24 @@ Turbopack 是一个`增量打包器`，用于取代 webpack,它是用Rust语言�
 
 ## React Compiler
 
-`React Compiler` 是Next.js 用于`自动优化组件渲染`来提高性能的工具，在之前的话，我们需要手动优化`useMemo` / `useCallbac`k /`memo`等，现在Next.js会自动优化.
+React Compiler 可以自动记忆化符合规则的组件和 Hook，减少一部分手写 `useMemo`、`useCallback` 和 `memo` 的需要，但不会保证所有组件都自动获得性能提升，也不能替代正确的状态设计。
+
+在 Next.js 中使用它，需要安装编译插件并显式开启配置；也可以在创建项目时使用 `--react-compiler`：
+
+```bash
+pnpm add -D babel-plugin-react-compiler
+```
+
+```ts
+// next.config.ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  reactCompiler: true,
+};
+
+export default nextConfig;
+```
 
 ## App Router 介绍
 
@@ -28,33 +45,33 @@ Next.js 有两套路由系统，一个是旧的`Pages Router`路由系统，一�
 
 推荐使用`App Router`路由系统。
 
-`App Router`的路由系统是根据约定定义的, 读取数据直接在组件中使用`fetch`调用即可。
+App Router 基于文件约定定义路由，并支持 Server Components、Route Handlers、Server Functions 等能力。Server Component 可以直接执行异步数据读取，但具体使用 `fetch`、数据库客户端还是其他数据层，应根据数据来源和缓存需求决定。
 
 ## 路由
 
 ### App Router 配置
 
-在 Next.js 中，app 目录下的每个文件夹都代表一个路由段（route segment），并直接映射到 URL 路径。无需配置路由表，框架会根据您的文件结构自动处理。
+在 Next.js 中，`app` 下的普通文件夹可定义路由段并参与 URL 路径，但只有某个段中存在 `page.tsx` 或 `route.ts` 时，相应地址才会公开。普通协作文件可以安全地与路由共置；`(group)` 路由组不会出现在 URL 中，`_folder` 私有目录会退出路由系统。
 
 ### page
 
-`layout.tsx`会把`page.tsx`中的内容注入到`layout.tsx`文件的 `children`中
+`page.tsx` 定义某个路由可访问的页面 UI。与它匹配的页面或更深层 layout 会作为父级 `layout.tsx` 的 `children` 渲染。
 
-### layout && template
+### layout 与 template
 
-`layout(布局)` 布局是多个页面**共享UI**，例如导航栏、侧边栏、底部等。只挂载一次
+`layout` 用于多个页面共享 UI，例如导航栏、侧边栏和页脚。客户端在同一布局边界内导航时会复用该布局并保留状态；跨越不同根布局等情况仍可能触发完整页面加载，不能概括为整个应用生命周期只挂载一次。
 
-`template(模板)` 基本功能跟布局一样，只是**不会保存状态**。 同时`template` 中的 `useEffect` 也会去重新执行. 因此可以实现生命周期
+`template` 同样包裹子内容，但会按所属路由段获得新的 key，并在该段变化时重新挂载，使其内部 Client Component 的状态重置、DOM 重建、Effect 重新同步。更深层导航和仅搜索参数变化不一定使上层 template 重挂载。
 
 嵌套顺序: `layout` --> `template` --> `page`
 
 ### loading(加载)
 
-Next.js的`loading`是借助了`Suspense`实现的，`Suspense`的具体用法请参考React的Suspense组件.在`/app`目录下创建`loading.tsx`
+在某个路由段中创建 `loading.tsx`，Next.js 会为该段的 `page` 及其子级自动建立 Suspense 边界，并在内容流式加载或导航等待时显示 loading UI。文件应放在需要该边界的具体段内，不一定只放在 `app` 根目录。
 
 ### error(错误)
 
-Next.js的`error`是借助了`Error Boundary`实现的。在`/app`目录下创建`error.tsx`
+在路由段中创建 `error.tsx` 可以为该段及其子级建立错误边界。`error.tsx` 必须是 Client Component，并可接收 `error` 与 `reset` props；根布局错误需要使用 `global-error.tsx`。
 
 ```tsx
 "use client"; // 错误组件必须是客户端组件
@@ -94,7 +111,7 @@ export default function NotFound() {
 
 ### Link 组件
 
-`<Link>` 是一个内置组件，在 `<a>` 的基础上扩展了功能，并且还能用来实现预获取(`prefetch` 预加载 默认开启 生产环境有效)，以及保持滚动位置(`scroll` 保持滚动位置), `replace`等。可以携带参数, 并使用useSearchParams获取参数
+`<Link>` 是基于 `<a>` 扩展的客户端导航组件，支持路由预获取、history 替换和滚动行为控制。查询参数可以写入 `href`，Client Component 使用 `useSearchParams` 读取，Server Component Page 则优先使用 `searchParams` prop。
 
 ```tsx
 import Link from "next/link"; // 引入Link组件
@@ -121,7 +138,7 @@ export default function About() {
 }
 ```
 
-```ts
+```tsx
 // 接收
 "use client";
 import { useSearchParams } from "next/navigation";
@@ -139,12 +156,12 @@ export default function Price() {
 
 一些参数:
 
-- `prefetch` 预获取: 在生产环境下默认开启, 且只在生产环境下有效
-- `scroll` 保持滚动位置 默认开启
-- `replace` 不保留历史记录
+- `prefetch`：预获取只在生产环境启用。默认 `"auto"`/`null` 时，静态路由会预取完整路由，动态路由通常只预取到最近的 `loading.tsx` 边界；`true` 强制预取完整路由，`false` 禁用视口和悬停预取。
+- `scroll`：默认 `true`，Next.js 会在导航后寻找可见的页面元素并按需滚动；设为 `false` 可关闭这次自动滚动处理。
+- `replace`：为 `true` 时替换当前 history 条目，而不是新增条目。
 
 ::: tip 注意
-在使用`useSearchParams()`加载js时页面可能会白屏,因此需要使用`<Suspense>`组件包裹
+`useSearchParams` 不会笼统地导致“加载 JS 白屏”。当页面采用静态生产渲染时，调用该 Hook 的 Client Component 必须位于 Suspense 边界内，否则生产构建会报 `Missing Suspense boundary with useSearchParams`；动态渲染路由没有这一特定要求。Server Component Page 也可以直接读取 `searchParams` prop。
 :::
 
 ### useRouter Hook (客户端组件)
@@ -166,8 +183,8 @@ export default function Page() {
       <button onClick={() => router.replace("/page")}>替换当前页面</button>
       <button onClick={() => router.back()}>返回上一页</button>
       <button onClick={() => router.forward()}>跳转下一页</button>
-      {/* refresh刷新当前页面 */}
-      <button onClick={() => router.refresh()}>刷新当前页面</button>
+      {/* refresh 重新请求并合并当前路由的服务端数据，不等同于浏览器整页刷新 */}
+      <button onClick={() => router.refresh()}>刷新路由数据</button>
       {/* prefetch效果和Link组件一样 */}
       <button onClick={() => router.prefetch("/about")}>预获取about页面</button>
     </>
@@ -178,13 +195,12 @@ export default function Page() {
 ### redirect 函数 (服务端组件)
 
 ```tsx
-import { redirect, permanentRedirect } from "next/navigation";
+import { redirect } from "next/navigation";
 export default async function Page() {
-  const checkLogin = await checkLogin();
+  const isLoggedIn = await checkLogin();
   //如果用户未登录，则跳转到登录页面
-  if (!checkLogin) {
-    redirect("/login"); // code 307 临时重定向
-    permanentRedirect("/login"); // code 308 永久重定向
+  if (!isLoggedIn) {
+    redirect("/login");
   }
   return (
     <div>
@@ -193,6 +209,8 @@ export default async function Page() {
   );
 }
 ```
+
+`redirect()` 会终止当前路由段的执行，通常返回临时重定向（在 Server Action 中使用 303）；若资源地址永久迁移，应在相应分支改用 `permanentRedirect()`，通常返回 308。两者不能像原示例那样连续调用，因为第一处重定向后的代码不可达。
 
 ## 动态路由
 
@@ -224,7 +242,7 @@ export default function DetailId() {
 
 :::
 
-## \*平行路由和独立路由
+## 平行路由与插槽
 
 平行路由指的是在同一布局`layout.tsx`中，可以同时渲染多个页面，例如team，analytics等，这个东西跟vue的 `router-view` 类似。很适合做`layout`布局.
 
@@ -260,14 +278,14 @@ export default function RootLayout({
 }
 ```
 
-同时, 平行路由支持定义单独的`Error`, `Loading`, 以及子导航. 直接在`@about` 文件夹下定义`Error.tsx` `Loading.tsx` `Nav.tsx`即可
+每个平行路由 slot 可以拥有独立的 `error.tsx`、`loading.tsx`、`layout.tsx` 等约定文件。文件名区分大小写并应使用小写；`Nav.tsx` 只是普通组件文件，不是 Next.js 的特殊路由约定。
 
 > 注意: 子导航使用`Link`组件跳转setting页面时，是没有问题的，但是我们在跳转之后刷新页面，就出现404了
 
 - `软导航` `Link` 组件跳转子页面的时候，这时候@analytics 和 children依然保持活跃，所以他只会替代@team里面的内容。
-- 使用`硬导航`浏览器页面刷新,此时`@analytics` 和 `children` 已经失活，因为它的底层原理其实是同时匹配@team和@analytics，children 目录下面的setting 页面，但是只有@team 有这个页面，其他两个没有，所以导致404。
+- 使用硬导航或刷新时，Next.js 无法从客户端状态恢复其他未匹配 slot 的活跃子页面，因此会渲染各 slot 的 `default.tsx`；缺少对应 fallback 时才会出现 404。
 
-解决方案：使用`default.tsx`来进行兜底，确保不会`404`
+解决方案：为可能无法匹配的命名 slot 创建 `default.tsx`，并且不要遗漏隐式的 `children` slot 所需的 fallback。
 
 ## 路由组
 
@@ -284,21 +302,23 @@ export default function RootLayout({
 1. 先把`app`目录下的`layout.tsx` 文件删除
 2. 在每组的目录下创建`layout.tsx`文件，并且定义html, body标签(必须含有)。
 
-## 路由处理程序 (后端API)
+在多个根布局之间导航会触发完整页面加载，而不是复用同一个根布局下的客户端导航状态。
+
+## Route Handlers（路由处理程序）
 
 路由处理程序，可以让我们在Next.js中编写API接口，并且支持与客户端组件的交互。
 
 ### 文件结构
 
-定义前端路由页面我们使用的`page.tsx`文件，而定义API接口我们使用的`route.ts`文件，并且他两都不受文件夹的限制，可以放在任何地方，只需要文件的名称以`route.ts`结尾即可。
+页面使用 `page.tsx`，Route Handler 使用 `route.ts`。两者都必须位于 `app` 路由树的某个路由段内（也可以使用 `src/app`），并由所在目录决定 URL；项目中任意位置名为 `route.ts` 的文件不会自动成为接口。
 
-> 注意：`page.tsx`文件和`route.ts`文件不能放在同一个文件夹下，否则会报错，所以最好把前后端代码分开。
+> 注意：同一个路由段不能同时用 `page.tsx` 和 `route.ts` 响应同一路径。常见做法是在 `app/api/user/route.ts` 等独立段中组织接口，但这不代表必须把整个前后端代码拆成两个项目。
 
 我们可以定义一个`api`文件夹，然后在这个文件夹下创建一对应的模块例如`user` `login` `register`等。
 
 ### 定义请求
 
-Next.js是遵循`RESTful API`的规范，所以我们可以使用HTTP方法来定义请求。
+Route Handler 通过导出大写的 HTTP 方法函数来处理请求。它可以用来设计 REST 风格 API，但 Next.js 不会自动保证接口符合 REST 约束。
 
 ```ts
 export async function GET(request) {}
@@ -402,7 +422,10 @@ export async function POST(request: NextRequest) {
      * options 配置项
      */
     cookieStore.set("token", "123456", {
-      httpOnly: true, //只允许在服务器端访问
+      httpOnly: true, // 禁止客户端 JavaScript 通过 document.cookie 读取
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
       maxAge: 60 * 60 * 24 * 30, //30天
     });
     return NextResponse.json({ code: 1 }, { status: 200 });
@@ -425,14 +448,17 @@ export async function GET(request: NextRequest) {
 }
 ```
 
+`httpOnly` Cookie 仍会在满足域、路径、SameSite 等规则时由浏览器自动随请求发送；它只是不暴露给客户端 JavaScript。示例中的明文密码和固定 token 只适合演示 API，生产环境应校验密码哈希、生成不可预测且可撤销的会话，并同时配置 `secure`、`sameSite`、过期与 CSRF 防护策略。
+
 ## AI SDK
 
 ### 安装
 
 ```sh
-npm i ai @ai-sdk/deepseek @ai-sdk/react
-pnpm add ai @ai-sdk/deepseek @ai-sdk/react
+pnpm add ai@^6 @ai-sdk/deepseek@^3 @ai-sdk/react@^3
 ```
+
+下面示例按 AI SDK 6 与对应的 v3 provider/UI 包编写。AI SDK 主版本之间存在破坏性变更；如果安装更新的主版本，应先按官方迁移指南调整 API。
 
 ### 编写API接口
 
@@ -442,18 +468,14 @@ pnpm add ai @ai-sdk/deepseek @ai-sdk/react
 import { NextRequest } from "next/server";
 // streamText 流式输出
 import { streamText, convertToModelMessages } from "ai";
-import { createDeepSeek } from "@ai-sdk/deepseek"; // 引入deepseek
-import { DEEPSEEK_API_KEY } from "./key";
-// 初始化DeepSeek
-const deepSeek = createDeepSeek({
-  apiKey: DEEPSEEK_API_KEY, //设置API密钥
-});
+import { deepseek } from "@ai-sdk/deepseek";
+
 export async function POST(req: NextRequest) {
-  const { messages } = await req.json(); // 获取请求体 (前端传过来的message)
+  const { messages } = await req.json();
   //这里为什么接受messages 因为我们使用前端的useChat 他会自动注入这个参数，所有可以直接读取
   const result = streamText({
-    model: deepSeek("deepseek-chat"), //使用deepseek-chat模型
-    messages: convertToModelMessages(messages), // 上下文 convertToModelMessages用于转化类型
+    model: deepseek("deepseek-chat"),
+    messages: await convertToModelMessages(messages),
     //前端传过来的额messages不符合sdk格式所以需要convertToModelMessages转换一下
     //转换之后的格式：(只需要角色和内容)
     //[
@@ -467,6 +489,8 @@ export async function POST(req: NextRequest) {
 }
 ```
 
+`@ai-sdk/deepseek` 默认从服务端环境变量 `DEEPSEEK_API_KEY` 读取密钥。不要把密钥写入源码文件、提交到仓库或暴露为 `NEXT_PUBLIC_*`。生产接口还应校验消息结构和长度，并增加身份验证、速率限制、错误处理与用量控制。
+
 前端: 我们在前端使用`useChat`组件来实现AI对话，这个组件内部封装了流式响应，默认会向`/api/chat`发送请求。
 
 - `messages`: 消息列表，包含用户和AI的对话内容
@@ -475,7 +499,7 @@ export async function POST(req: NextRequest) {
 
 messages数据结构解析:
 
-```json
+```jsonc
 [
   {
     "parts": [
@@ -504,7 +528,7 @@ messages数据结构解析:
 ]
 ```
 
-前端编写:
+前端编写（AI SDK 6）：
 
 ```tsx
 "use client";
@@ -521,7 +545,7 @@ export default function HomePage() {
    * messages: 消息列表 接收后台发过来的数据
    * sendMessage: 给后台发送数据
    */
-  const { messages, sendMessage } = useChat({
+  const { messages, sendMessage, status } = useChat({
     onFinish: () => {
       setInput("");
     },
@@ -536,7 +560,7 @@ export default function HomePage() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (input.trim()) {
+      if (input.trim() && status === "ready") {
         sendMessage({ text: input });
       }
     }
@@ -649,11 +673,11 @@ export default function HomePage() {
             </div>
             <Button
               onClick={() => {
-                if (input.trim()) {
+                if (input.trim() && status === "ready") {
                   sendMessage({ text: input });
                 }
               }}
-              disabled={!input.trim()}
+              disabled={!input.trim() || status !== "ready"}
               className="h-15 px-6 rounded-xl bg-linear-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg
@@ -687,7 +711,7 @@ export default function HomePage() {
 - 限流例如配合第三方服务做`限流`
 - `鉴权`/判断是否登录
 
-`Prxoy代理`其实跟`拦截器`类似，它可以在请求完成之前进行拦截，然后进行一些处理，例如：修改请求头、修改请求体、修改响应体等。
+Next.js 16 的 `proxy.ts` 在路由渲染前运行，可用于重写或重定向 URL、修改请求/响应头和 Cookie，或者直接返回一个 `Response`。它不适合按普通流式中间件的方式任意读取并改写后续路由的请求体或响应体；需要转换正文时，应在 Route Handler、Server Function 或实际上游代理服务中完成。
 
 ```ts
 // src/proxy.ts
@@ -695,6 +719,7 @@ export default function HomePage() {
 import { NextRequest, NextResponse } from "next/server";
 export async function proxy(request: NextRequest) {
   console.log(request.url, "url");
+  return NextResponse.next();
 }
 // 自定义匹配器 配置匹配路径
 export const config = {
@@ -762,34 +787,48 @@ export const config: ProxyConfig = {
 ### 处理跨域
 
 ```ts
-// 只要是/api下面的接口都可以被任意访问
+// 仅允许白名单来源跨域访问 /api
 import { NextRequest, NextResponse } from "next/server";
 import { ProxyConfig } from "next/server";
+
+const allowedOrigins = ["https://example.com", "https://admin.example.com"];
+const corsHeaders = {
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
 export async function proxy(request: NextRequest) {
-  const response = NextResponse.next(); // 获取响应头
+  const origin = request.headers.get("origin") ?? "";
+  const isAllowed = allowedOrigins.includes(origin);
+
+  if (request.method === "OPTIONS") {
+    return new NextResponse(null, {
+      status: 204,
+      headers: {
+        ...(isAllowed ? { "Access-Control-Allow-Origin": origin } : {}),
+        ...corsHeaders,
+      },
+    });
+  }
+
+  const response = NextResponse.next();
+  if (isAllowed) response.headers.set("Access-Control-Allow-Origin", origin);
   Object.entries(corsHeaders).forEach(([key, value]) => {
     response.headers.set(key, value);
   });
   return response;
 }
 
-// corsHeaders 处理跨域需要的东西
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
-
 export const config: ProxyConfig = {
   matcher: "/api/:path*",
 };
 ```
 
-## CSR SSR SSG
+## CSR、SSR 与 SSG
 
 ### CSR 客户端渲染
 
-CSR是`Client Side Rendering`的缩写，即`客户端渲染`。我们使用的`Vue` `React` `Angular` 等框架，都是CSR。
+CSR 是 Client-Side Rendering，即主要在浏览器中执行 JavaScript 并生成页面 UI。Vue、React、Angular 都能实现 CSR，但这些库或框架并不只能使用 CSR；配合 Nuxt、Next.js、Angular SSR 等工具也可以采用 SSR 或预渲染。
 
 ![alt text](/assert/nextjs_image/CSR.png)
 
@@ -810,7 +849,7 @@ CSR是`Client Side Rendering`的缩写，即`客户端渲染`。我们使用的`
 
 ### SSR 服务器端渲染
 
-SSR是`Server Side Rendering`的缩写，即服务端渲染。像我们使用的`Next.js` `Nuxt.js`等框架，都是SSR。
+SSR 是 Server-Side Rendering，即在请求期间由服务器生成 HTML。Next.js、Nuxt 等支持 SSR，同时也支持静态生成、客户端渲染和混合策略，不能把整个框架等同于 SSR。
 
 ![alt text](/assert/nextjs_image/SSR.png)
 
@@ -832,19 +871,19 @@ SSR是`Server Side Rendering`的缩写，即服务端渲染。像我们使用的
 
 ### SSG 静态生成
 
-SSG是`Static Site Generation`的缩写，即静态站点生成。我们使用的`Vitepress` `Astro`等框架，都是SSG。
+SSG 是 Static Site Generation，即在构建或预生成阶段生成 HTML。VitePress 主要采用静态生成；Astro、Next.js 等可以按路由混合静态生成、服务端渲染和客户端交互。
 
 ![alt text](/assert/nextjs_image/SSG.png)
 
 优点：
 
 - 首屏加载极快（CDN 分发静态文件，无需服务器实时渲染）
-- 服务器压力小（CDN 直接承载请求，无需服务器执行 JS）
-- SEO 最优（静态 HTML 含完整数据，搜索引擎爬取无压力）
+- 服务器压力通常较小（静态文件可以由 CDN 直接承载；页面仍可能在浏览器执行客户端 JavaScript）
+- 便于搜索引擎读取首屏 HTML，但最终 SEO 仍取决于内容、元数据、可访问性和站点质量
 
 缺点：
 
-- 不适用于动态数据（数据更新需要重新构建部署，如实时股价、实时评论）
+- 纯构建时 SSG 不适合必须按请求实时变化的数据；可通过客户端请求、按需重新验证、ISR 或改用 SSR 组合解决
 - 详情页面如果过多(构建时间会长)
 
 适合场景：
@@ -855,23 +894,23 @@ SSG是`Static Site Generation`的缩写，即静态站点生成。我们使用�
 
 ## Hydration 水合
 
-简单来说就是HTML他是`静态`的，需要通过JS才能变成动态的，不然HTML是没有任何交互效果的，当JS下载完成在赋予HTML交互效果的阶段称之为`水合`。
+Hydration 是 React 在浏览器中用客户端组件的 JavaScript 与服务端生成的 HTML 建立对应关系，并附加 React 事件处理与状态能力的过程。水合前并非“HTML 没有任何交互”：链接、原生表单控件、`details` 等浏览器原生行为仍可工作；依赖 React 事件处理器和客户端状态的交互则要等相应 Client Component 完成水合。
 
 ## RSC
 
-RSC是React19正式引入的一种新的组件类型，它可以在服务器端渲染，也可以在客户端渲染。
+React Server Components（RSC）是在服务器环境执行、并把序列化后的组件树结果发送给客户端的一套架构。它并不是到 React 19 才首次出现：Next.js App Router 在 React 19 之前已经采用；React 19 对相关能力作了稳定化，但框架与打包器集成 API 仍由具体工具链负责。
 
-传统的SSR他是在服务器提前把页面渲染好，然后返回给浏览器，然后进行`水合`，CSR则是在客户端渲染，而RSC则是吸取两方优势，分为`服务器组件`和`客户端组件`。
+SSR 描述“把组件输出预渲染为 HTML”的过程，RSC 描述组件模块在哪个环境执行以及如何传输组件树，两者不是互斥的同一维度。Next.js 首次加载时会用 RSC Payload 协调组件树，并使用 Server Components 与 Client Components 预渲染 HTML；只有 Client Components 需要在浏览器水合。
 
-> 注意: RSC不属于SSR和CSR, RSC分为服务端组件和客户端组件, 在nextjs中所有组件默认都是`服务器组件`, 如果要把服务器组件变成客户端组件, 需要使用`use client`声明
+> 在 App Router 中，未进入 `'use client'` 模块依赖图的组件默认是 Server Component。`'use client'` 声明的是服务端/客户端模块图边界，并不是把已经执行过的 Server Component 在运行时“转换”为 Client Component。
 
 优点:
 
 - 减少bundle体积
-- 局部水合
+- 减少需要水合的客户端组件范围
 - 流式加载
 
-## Server Components(服务端组件)
+## Server Components（服务端组件）
 
 ```tsx
 // src/app/server/page.tsx
@@ -880,7 +919,7 @@ import mysql, { RowDataPacket } from "mysql2/promise"; //操作数据库 (演示
 const pool = mysql.createPool({
   host: "localhost",
   user: "root",
-  password: "123456",
+  password: process.env.DATABASE_PASSWORD,
   database: "catering",
 });
 
@@ -903,27 +942,27 @@ export default async function ServerPage() {
 }
 ```
 
-因为是在服务端渲染的所以日志会出现在控制台，那为什么控制台也会出现，是因为Next.js在本地开发模式方便我们调试进行的输出，后续生产环境就看不到了。
+Server Component 中的日志首先在服务器运行环境输出。开发工具可能为了调试转发或展示额外信息，但生产环境日志最终出现在哪里取决于部署平台和日志配置，不应依赖浏览器控制台判断代码的执行环境。
 
 ### 服务端组件的优点
 
 - 安全性: 我们在服务端组件中访问一些API秘钥，令牌等其他机密，不会暴露给客户端。
 - 体积: 因为服务端组件在服务器渲染，所以不会被打包到客户端，所以体积更小。
 - 全栈：可以在服务端组件访问数据库，文件系统等其他API，实现全栈开发。
-- FCP(首次内容绘制): 因为服务端组件是`流式传输`，所以边渲染边返回，提高了FCP性能。
+- FCP（首次内容绘制）：Server Components 可减少客户端 JavaScript，并能与 Suspense 和流式渲染配合逐步返回内容；是否改善 FCP 仍取决于数据读取、缓存和边界设计。
 
 ### 服务端组件的缺点
 
-- 交互性: 因为服务端组件在服务器渲染，所以无法访问浏览器API，所以无法进行交互。
+- 交互性：Server Component 自身不能使用浏览器事件处理器或本地 state，但可以组合 Client Components，也可以通过表单调用 Server Function，因此整个页面仍可交互。
 - hooks: `useEffect` `useState` 等hooks在服务端组件中无法使用。
 
-JavaScript: 是由三部分组成的(ECMAScript,DOM,BOM)，在服务端组件只能使用`ECMAScript`部分，无法访问`DOM`和`BOM`。
+ECMAScript 定义 JavaScript 语言本身；DOM、Fetch、Web Storage 等是宿主环境提供的 Web API，“BOM”只是对部分浏览器 API 的非正式统称，并不是 JavaScript 语言的组成部分。Server Component 可以使用服务器运行时提供的 ECMAScript 与 Node.js/Web API，但不能使用只存在于浏览器页面环境的 `document`、`window`、`localStorage` 等对象。
 
-`ECMAScript`: 就是我们常用的对象，数组，es6+等这些东西是通用的在客户端和服务端都能用。
+对象、数组、Promise 等 ECMAScript 能力通常可在客户端和服务端使用，但具体语法与内置对象仍取决于各运行时支持版本。
 
 > 如果要使用以下有交互性的功能，我们需要使用客户端组件。
 
-## Client Components(客户端组件)
+## Client Components（客户端组件）
 
 声明客户端组件需要在文件的顶部编写 `'use client'` 声明这是客户端组件，但是注意客户端组件会在服务端进行一次`预渲染`，所有访问`document` `window` 等API需要在`useEffect`中访问。
 
@@ -931,7 +970,7 @@ JavaScript: 是由三部分组成的(ECMAScript,DOM,BOM)，在服务端组件只
 "use client";
 import { useEffect, useState } from "react";
 console.log("client");
-export default function ServerPage() {
+export default function ClientPage() {
   const [count, setCount] = useState(0);
   console.log("client X");
   useEffect(() => {
@@ -939,7 +978,7 @@ export default function ServerPage() {
   }, []);
   return (
     <div>
-      <h1>Server Page</h1>
+      <h1>Client Page</h1>
       <button onClick={() => setCount(count + 1)}>点击</button>
       <p>{count}</p>
     </div>
@@ -949,15 +988,15 @@ export default function ServerPage() {
 
 ### 组件嵌套
 
-> 服务端组件可以嵌套客户端组件，客户端组件只能嵌套客户端组件, 不能嵌套服务端组件。
+Server Component 可以导入并渲染 Client Component。Client Component 不能直接导入需要留在服务器模块图中的 Server Component；但父级 Server Component 可以先创建 Server Component 元素，再通过 `children` 或其他可序列化的 React 节点 prop 传给 Client Component 作为插槽。
 
-因为客户端会把他所有的模块以及子组件认为是客户端组件，那此时如果服务端组件用了`node.js`的API，或者其他服务端操作，那就会报错，因为客户端组件无法访问这些API，故此客户端组件不能嵌套服务端组件。
+一旦文件标记 `'use client'`，它静态导入的模块会进入客户端依赖图，因此不能再从中导入数据库、文件系统或密钥等 server-only 模块。插槽模式之所以可行，是因为 Server Component 由服务器父组件负责创建，而不是由 Client Component 导入和执行。
 
 ### server-only
 
-随着Nodejs的发展，很多API已经可以跟浏览器共用了例如`fetch`, `webSocket`, 未来Nodejs25支持 `localStorage` 等API, 所以就会出现这种情况。
+客户端与服务器运行时共享 `fetch` 等部分 Web API，仅凭所调用的全局名称不一定能看出模块是否包含密钥或服务器逻辑，因此应显式标注环境边界。
 
-使用`server-only`可以解决, server-only需要安装
+在 server-only 模块顶部导入 `server-only`，如果它被 Client Component 依赖图引用，Next.js 会给出构建错误。Next.js 能内部识别该标记；单独安装包是可选的，主要用于满足依赖检查工具。
 
 ```sh
 npm install server-only
@@ -966,25 +1005,26 @@ pnpm add server-only
 ```
 
 ```tsx
-import "server-only"; // 引入server-only 表示只能在服务端使用
-export default function useTest(type: 0 | 1) {
-  if (type === 0) {
-    return fetch("https://api.github.com");
-  } else {
-    return new WebSocket("wss://api.github.com");
-  }
+import "server-only";
+
+export async function getPrivateData() {
+  const response = await fetch("https://api.example.com/private", {
+    headers: { Authorization: `Bearer ${process.env.API_TOKEN}` },
+  });
+  if (!response.ok) throw new Error("读取私有数据失败");
+  return response.json();
 }
 ```
 
 ## Cache Components(缓存组件)
 
-Cache Components 是Next.js(16)版本特有的机制，实现了`静态内容` `动态内容` `缓存内容`的混合编排。保留了静态内容的加载速度，又具备动态渲染的灵活性，解决了`静态内容(加载快但无法实时更新数据)`和`动态内容(加载慢但可以实时更新数据)`权衡的问题。
+Cache Components 是 Next.js 16 的可选功能，用于在同一路由中组合静态、显式缓存和请求时动态内容。它通过部分预渲染生成静态外壳，并把无法在预渲染阶段完成的子树延迟到请求时流式返回；这能改善静态与动态内容的组合方式，但不会消除数据新鲜度、缓存成本和请求延迟之间的权衡。
 
 - 静态内容: 构建(`npm run build`)时进行预渲染，例如 `「本地文件」「模块导入」「纯计算」（无网络请求、无用户相关数据）`, 会被直接编译成HTML瞬间加载、立即响应。
 
-- 动态内容：用户发起请求时才开始渲染的内容，依赖 “实时数据” 或 “用户个性化信息”，每次请求都可能生成不同结果，不会被缓存。例如 `「实时数据源」（如实时接口、数据库实时查询）或「用户请求上下文」（如 Cookie、请求头、URL 参数）`。
+- 动态内容：需要请求时数据或未缓存异步数据的内容，例如 Cookie、请求头、参数以及实时数据源。它会在请求时执行；是否缓存数据取决于是否显式使用缓存边界。
 
-- 缓存内容：缓存内容的本质就是`缓存动态数据`，缓存之后会被纳入`静态外壳(Static Shell)`, 静态外壳就类似于毛坯房，会提前把结构搭建好，后续在通过(流式传输)填充里面的动态内容。
+- 缓存内容：使用 `'use cache'` 后，函数或组件的结果会按参数等信息建立缓存键，并可纳入静态外壳。静态外壳中 Suspense 的 fallback 会先返回，真正未缓存的动态内容随后在请求时流式填充。
 
 ### 启用 Cache Components
 
@@ -1005,11 +1045,12 @@ export default nextConfig;
 
 ```tsx
 import fs from "node:fs";
+import path from "node:path";
 
 export default async function Home() {
-  const data = fs.readFileSync("data.json", "utf-8"); // 本地文件读取
+  const data = fs.readFileSync(path.join(process.cwd(), "data.json"), "utf-8");
   const json = JSON.parse(data);
-  const impData = await import("../../../data.json"); // 模块导入
+  const { default: impData } = await import("../../../data.json");
   const names = impData.list.map((item) => item.name).join(","); // 纯计算
   console.log(json);
   console.log(impData);
@@ -1030,7 +1071,7 @@ export default async function Home() {
 ```
 
 2. 动态内容
-   适用场景：fetch请求、cookies、headers等动态数据
+   适用场景：未缓存的网络/数据库请求，以及 cookies、headers 等请求时数据
 
 > 动态内容必须配合Suspense使用。
 
@@ -1070,11 +1111,11 @@ export default async function Home() {
 
 ### 实现原理
 
-Next.js 会通过`(Partial Prerendering/PPR)`技术,实现静态外壳(Static Shell)渲染，提供占位符，当用户请求时，再通过流式传输(Streaming)填充里面的动态内容，以此提升首屏加载速度和用户体验。 详细演示请看[教程](https://nextjs-docs-henna-six.vercel.app/tutorials/cache-components)
+启用 Cache Components 后，部分预渲染（PPR）会尽可能在构建时提取静态 HTML 与 RSC 外壳。对未缓存的异步或请求时内容，开发和构建阶段要求显式选择：用 `<Suspense>` 延迟到请求时，或在不依赖请求上下文时用 `'use cache'` 缓存。否则会出现 `Uncached data was accessed outside of <Suspense>` 错误。
 
 ### 非确定操作
 
-例如: `随机数`、`时间戳`等非确定操作，每次请求都可能生成不同结果。nextjs会尽可能多的进行预渲染, 当使用`Math.random()`生成随机数时, 会以为是静态内容，这样会导致`Math.random()`是一个固定的值, 同时也会报错.
+`Math.random()`、`Date.now()`、`crypto.randomUUID()` 等操作在预渲染时执行会把当时结果写入静态外壳。若期望每个请求生成新值，需要先读取请求时数据，或调用 `await connection()` 明确推迟到请求阶段，并把该子树置于 Suspense 边界内。
 
 > 解决方法: `await connection();`
 
@@ -1114,7 +1155,7 @@ export default async function Home() {
 
 ### 缓存内容
 
-缓存组件，可以使用`use cache`声明这是一个缓存组件，然后使用`cacheLife`声明缓存时间。
+可以用 `'use cache'` 把路由、异步组件或函数的返回结果标记为可缓存，并用 `cacheLife` 指定生命周期。缓存作用域不能直接读取普通 `cookies()`/`headers()` 等请求上下文；推荐先在作用域外读取并把所需值作为参数传入，或按需求评估 `'use cache: private'`。
 
 cacheLife参数：
 
@@ -1132,13 +1173,12 @@ cacheLife参数：
 | max         | 很少变化（法律页面）       | 5分钟     | 30天           | 1年        |
 
 ```tsx
-import { Suspense } from "react";
 import { cacheLife } from "next/cache";
 
-const DynamicContent = async () => {
+const CachedContent = async () => {
   "use cache";
   cacheLife("hours"); //使用预设参数
-  //cacheLife({stale: 30, revalidate: 1, expire: 1}) // 使用自定义参数 精细化控制
+  // cacheLife({ stale: 30, revalidate: 1, expire: 60 });
   const data = await fetch("https://www.mocklib.com/mock/random/name");
   const json = await data.json();
   console.log(json);
@@ -1158,9 +1198,7 @@ export default async function Home() {
   return (
     <div>
       <h1>Home</h1>
-      <Suspense fallback={<div>动态内容Loading...</div>}>
-        <DynamicContent />
-      </Suspense>
+      <CachedContent />
     </div>
   );
 }
@@ -1205,7 +1243,7 @@ export default async function Home() {
 }
 ```
 
-在开发环境下没有任何问题, 但是当进行构建之后`npm run build && npm run start`, 会发现每次刷新图片都不会变化，始终是同一个图片。原因是：Next.js会尽可能多的进行缓存，以提高性能降低成本，这意味着路由会被静态渲染，以及数据请求也会被缓存，除非禁用缓存。
+即使 `fetch` 响应本身没有进入持久 Data Cache，只要该路由能在构建时完成预渲染，构建时取得的随机图片也可能成为固定的静态输出。Next.js 15 起服务端 `fetch` 默认不再等同于“永久缓存”，应区分“请求响应缓存”和“整条路由被静态预渲染”两个层次。
 
 ### 如何退出缓存机制
 
@@ -1229,7 +1267,7 @@ export default async function Home() {
 2. 使用 `dynamic` 属性
 
 ```tsx
-export const dynamic = "force-dynamic"; // 动态更新 缓存组件不需要使用这个 默认都是动态内容
+export const dynamic = "force-dynamic"; // cacheComponents 关闭时，强制按请求动态渲染
 export default async function Home() {
   const randomImage = await fetch("https://www.loliapi.com/acg/pc?type=json");
   const data = await randomImage.json();
@@ -1263,15 +1301,15 @@ export default async function Home() {
 
 4. 任意动态内容API
 
-当你使用以下任意API时，该路由会被视为动态内容，不会被缓存(因为页面会被视为动态内容):
+当 Cache Components 未启用时，以下请求时 API 或显式选项会让相关路由选择动态渲染，或让对应请求跳过缓存：
 
 - `cookies`
 - `headers`
 - `connection`
 - `searchParams`
-- `fetch`和`{ cache: ‘no-store’ }`
+- `fetch(..., { cache: "no-store" })`
 
-## 启用缓存组件
+### 启用 Cache Components 后的策略
 
 确保`cacheComponents`配置为`true`。
 
@@ -1286,13 +1324,13 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-> 启用缓存组件之后，所有组件默认为`动态内容`(所有动态内容必须通过`suspense`组件包裹)，因此`export const dynamic = 'force-dynamic'`不需要配置。
+> 启用 Cache Components 后，并不是“所有组件默认动态”。可在构建时完成的同步内容会自动进入静态外壳；未缓存的异步或请求时内容必须放入 Suspense 边界，适合缓存的内容可以使用 `'use cache'`。此模式用 `'use cache'`、`cacheLife` 和 Suspense 取代 `dynamic`、`revalidate`、`fetchCache` 等旧的路由段缓存配置。
 
-## image 组件
+## Image 组件
 
 该组件是Next.js内置的图片组件，是基于原生 `img` 标签进行扩展，并不代表原生 `img` 标签不能使用。
 
-- 尺寸优化：支持使用现代化图片格式，如`webp`，`avif`，`apng`等,并自动根据设备提供正确的尺寸。
+- 尺寸优化：根据 `src`、`width`、`sizes` 和配置生成适合不同视口的候选尺寸，并可输出 WebP 或 AVIF。APNG 是动画 PNG 格式，不是 Next.js 图像优化器的现代输出格式选项。
 - 视觉稳定性：防止图片加载时发生布局偏移，具体参考 [CLS](https://web.dev/articles/cls?hl=zh-cn)
 - 懒加载：在图片进入视口才会加载，使用浏览器原生懒加载，并可选择添加模糊显示占位符。(默认就是懒加载)
 - 灵活性：可按需调整图像大小，即使是存储在远程服务器上的图像也可以调整。
@@ -1318,11 +1356,11 @@ export default function Home() {
 }
 ```
 
-#### 2. import静态引入 动态引入
+#### 2. import 静态引入
 
 使用`import`引入图片，是不需要填写宽度和高度，Next.js会自动确定图片的尺寸。
 
-```json
+```jsonc
 // tsconfig.json 配置路径别名
 {
   "compilerOptions": {
@@ -1348,18 +1386,9 @@ export default function Home() {
   );
 }
 
-// 动态引入
-import Image from "next/image";
-export default async function Home() {
-  const img = await import("@/public/1.png"); // 引入图片
-  return (
-    <div>
-      <h1>Home</h1>
-      <Image loading="eager" src={img.default} alt="logo" />
-    </div>
-  );
-}
 ```
+
+图片导入路径必须能被构建器静态分析，不能用 `await import()` 或 `require()` 在运行时动态拼接图片模块。动态来源应传入 URL 字符串，并为远程地址配置 `remotePatterns`，同时提供 `width`/`height` 或使用 `fill`。
 
 #### 3. 远程图片引入 (在线图片)
 
@@ -1386,31 +1415,33 @@ export default async function Home() {
 
 当我们直接使用远程图片引入的时候Next.js会报错，因为Next.js默认只允许加载`本地图片`，如果需要加载远程图片，需要配置`next.config.js`文件。
 
-```js
+```ts
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: 'https', // 协议
-        hostname: 'eo-img.521799.xyz', // 主机名
-        pathname: '/i/pc/**', // 路径
-        port: '', // 端口
+        protocol: "https",
+        hostname: "eo-img.521799.xyz",
+        pathname: "/i/pc/**",
+        port: "",
       },
     ],
   },
 };
+
+export default nextConfig;
 ```
 
 #### 4. LCP警告
 
-如果图片是首屏或者LCP图片，需要添加`loading="eager"`属性，否则会触发LCP警告, 因为Image组件默认是`懒加载`的。
+对于确定的 LCP/首屏主图，应让浏览器尽早发现资源。可根据场景使用 `loading="eager"` 或 `fetchPriority="high"`；只有在单一、明确的关键图片需要从 `<head>` 提前发现时才使用 `preload`。不要同时叠加这些互斥的加载提示。
 
 - lazy: 懒加载，默认值，在图片进入视口才会加载。
-- eager: 立即加载，在图片进入视口就会加载。
+- eager: 不考虑图片是否进入视口，立即开始加载。
 
-第二种解决方案使用`preload`属性加载图片，表示提前预加载图片，不过Next.js还是更加推荐使用`loading="eager"`属性加载图片。
+`preload` 会在 `<head>` 中插入预加载链接。多数场景优先使用 `loading="eager"` 或 `fetchPriority="high"`；如果不同视口可能有不同 LCP 图片，盲目 preload 还可能下载多余资源。
 
 #### 5. 图片格式优化
 
@@ -1418,7 +1449,7 @@ Next.js 会通过请求`Accept`头自动检测浏览器支持的图像格式，�
 
 `Accept:image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8`
 
-我们可以同时启用 `AVIF` 和 `WebP` 格式。对于支持 `AVIF` 的浏览器，系统将优先使用 `AVIF` 格式，`WebP` 格式作为备选方案。目前`AVIF`格式最优。
+可以同时启用 AVIF 和 WebP，Next.js 会按 `formats` 顺序及浏览器 `Accept` 头选择输出格式。AVIF 通常压缩率更高，但首次编码更慢、会增加单独的格式缓存；官方仍建议多数场景优先评估 WebP，因此不存在“AVIF 对所有图片都最优”的通用结论。
 
 > 后端会准备几种不同的格式，并返回最合适的格式(浏览器支持什么格式就返回什么格式 有一个从高到低的优先级)。
 
@@ -1433,7 +1464,7 @@ const nextConfig: NextConfig = {
 
 #### 6. 设备适配
 
-如果你的老板告诉你要兼容哪些设备，你可以使用`deviceSizes`和`imageSizes`属性来配置。
+`deviceSizes` 与 `imageSizes` 用于控制图像优化器生成 `srcset` 时可选择的宽度集合，并不是浏览器或设备兼容名单。只有在默认宽度不符合站点布局时才需要修改。
 
 ```ts
 const nextConfig: NextConfig = {
@@ -1451,7 +1482,7 @@ const nextConfig: NextConfig = {
 
 | 属性  | 类型   | 示例                          | 说明                               |
 | ----- | ------ | ----------------------------- | ---------------------------------- |
-| `src` | String | `src="/profile.png"`          | 图片源路径，支持本地路径或远程 URL |
+| `src` | String/StaticImport | `src="/profile.png"`   | 本地路径、已配置的远程 URL 或静态导入 |
 | `alt` | String | `alt="Picture of the author"` | 图片替代文本，用于无障碍访问和 SEO |
 
 #### 尺寸相关
@@ -1495,7 +1526,7 @@ const nextConfig: NextConfig = {
 | `overrideSrc` | String | `overrideSrc="/seo.png"`           | 覆盖 src，用于 SEO 优化         |
 | `decoding`    | String | `decoding="async"`                 | 解码方式，"async"/"sync"/"auto" |
 
-## font 字体
+## Font 字体
 
 `next/font`模块，内置了字体优化功能，其目的是防止`CLS`布局偏移。font模块主要分为两部分，一部分是内置的`Google Fonts`字体，另一部分是`本地字体`。
 
@@ -1503,32 +1534,27 @@ const nextConfig: NextConfig = {
 
 1. 内置Google Fonts字体
 2. 中文字符集支持 --> 寻找支持中文的字体
-3. 可变字体 可变字体是一种可以适应不同字重和样式的字体，它可以在不同的设备上自动调整字体大小和样式，以适应不同的屏幕大小和分辨率。 把`weight`变为数组即可配置
+3. 可变字体把字重、字宽、倾斜度等一个或多个变化轴打包在同一字体文件中；它不会自动根据屏幕大小改变字体。加载可变 Google Font 时通常无需指定 `weight`，也可以用范围字符串（如 `"100 900"`）；`weight` 数组主要用于选择非可变字体的多个离散字重。
 4. 本地字体加载
 
 在使用google字体的时候，Google字体和css文件会在构建的时候下载到本地，可以与静态资源一起托管到服务器，所以不会向Google发送请求。
 
 ```tsx
 // 可以点击进去看声明文件 判断有哪些字体
-// 可视化 https://fonts.gofogle.com/
-import { BBH_Sans_Hegarty } from "next/font/google"; // 引入字体库
-// BBH_Sans_Hegarty 返回一个函数需要调用
+// 字体与可用子集可在 https://fonts.google.com/ 查询
+import { Inter } from "next/font/google";
 
 // 引入字体库 返回一个类名
-const bbhSansHegarty = BBH_Sans_Hegarty({
-  weight: "400", // 字体粗细
-  display: "swap", // 加载策略 字体显示方式
-  subsets: ["latin", "latin-ext", "cyrillic"], // 字符集 (了解)
-  style: ["normal"], // 字体样式，如 ‘normal’ ‘italic（斜体）’ ‘oblique（倾斜）’ 等。
+const inter = Inter({
+  display: "swap",
+  subsets: ["latin"],
 });
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={bbhSansHegarty.className}>
-        {" "}
-        {/** bbhSansHegarty会返回一个类名，用于加载字体 */}
+      <body className={inter.className}>
         {children}
         abcd 你好
       </body>
@@ -1546,7 +1572,10 @@ const myFont = localFont({
   src: "./fonts/bbh-sans-hegarty.woff2",
   display: "swap",
 });
-...
+
+export function LocalFontExample() {
+  return <p className={myFont.className}>Local font</p>;
+}
 ```
 
 对于`display`的值，常用的有如下几种：
@@ -1581,7 +1610,7 @@ Next.js允许我们使用Script组件去加载js脚本(外部/本地脚本)，�
 
 #### 局部使用
 
-```ts
+```tsx
 // src/app/home/page.tsx
 import Script from 'next/script' // 引入Script组件
 export default function HomePage() {
@@ -1593,15 +1622,15 @@ export default function HomePage() {
 }
 ```
 
-在home路由引入一个远程的js脚本，他只会在切换到home路由时才会加载，并且只会加载一次，然后纳入缓存。
+在 home 路由中使用默认的 `afterInteractive` 策略时，脚本会在该页面打开后于客户端加载。Next.js 会对同一脚本进行去重，浏览器也会按 HTTP 缓存策略复用资源。
 
-他的底层原理会把这个Script组件转换成`<script>`标签，然后插入到`<head>`标签中。
+`Script` 最终会管理原生 `<script>`，但注入时机和位置取决于 `strategy`：`beforeInteractive` 总会进入初始 HTML 的 `<head>`，其他策略由客户端按相应时机注入，不能概括为全部插入 `<head>`。
 
 #### 全局引入
 
 全局引入直接在app/layout.tsx中引入，他会自动在所有页面中引入，并且只会加载一次，然后纳入缓存。
 
-```ts
+```tsx
 // src/app/layout.tsx
 import Script from 'next/script' // 引入Script组件
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -1622,18 +1651,39 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 Next.js允许我们通过`strategy`属性来控制Script组件的加载策略。
 
-- `beforeInteractive`: 在代码和页面之前加载会`阻塞页面渲染`。(不推荐使用)
-- `afterInteractive`(默认值): 在页面渲染到客户端之后加载。
+- `beforeInteractive`: 在 Next.js 自身模块和页面水合前下载并按顺序执行，只能放在根 layout；它会被预加载，但官方明确说明不会阻塞页面水合。仅用于全站关键脚本。
+- `afterInteractive`(默认值): 在页面发生部分或全部水合后尽早加载。
 - `lazyOnload`: 在浏览器空闲时稍后加载脚本。
-- `worker`(实验性特性): 暂时不建议使用。
+- `worker`(实验性特性): 尝试在 Web Worker 中加载第三方脚本，支持范围受版本与路由模式限制，应先验证目标脚本兼容性。
 
-在加载远程脚本的时候, 建议加上id, 因为nextjs会根据id来追踪优化。
+外部脚本通过 `src` 标识，不要求额外设置 `id`；内联脚本没有 `src`，必须提供稳定且唯一的 `id`，以便 Next.js 跟踪和去重。
 
 ```tsx
-<Script id="VGUBHJMK1" strategy="beforeInteractive" src="https://unpkg.com/vue@3/dist/vue.global.js" />
-<Script id="VGUBHJMK2" strategy="afterInteractive" src="https://unpkg.com/vue@3/dist/vue.global.js" />
-<Script id="VGUBHJMK3" strategy="lazyOnload" src="https://unpkg.com/vue@3/dist/vue.global.js" />
-<Script id="VGUBHJMK4" strategy="worker" src="https://unpkg.com/vue@3/dist/vue.global.js" />
+import Script from "next/script";
+
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="zh-CN">
+      <body>
+        {children}
+        <Script
+          strategy="beforeInteractive"
+          src="https://example.com/critical.js"
+        />
+        <Script
+          strategy="afterInteractive"
+          src="https://example.com/analytics.js"
+        />
+        <Script
+          strategy="lazyOnload"
+          src="https://example.com/chat-widget.js"
+        />
+      </body>
+    </html>
+  );
+}
 ```
 
 #### 内联脚本
@@ -1682,6 +1732,7 @@ export default function RootLayout({
 
 ```tsx
 <Script
+  id="VGUBHJMK7"
   dangerouslySetInnerHTML={{
     __html: `
     const {createApp} = Vue
@@ -1701,19 +1752,19 @@ export default function RootLayout({
 
 #### 事件监听 (生命周期)
 
-- `onload`: 脚本加载完成时触发。
+- `onLoad`: 脚本加载完成时触发。
 - `onReady`: 脚本加载完成后，且组件每次挂载的时候都会触发。
 - `onError`: 脚本加载失败时触发。
 
-> Script组件只有在导入客户端的时候才会生效，所以需要使用`'use client'`声明这是一个客户端组件。
+> `Script` 本身可以在 App Router 的 Server Component Page 或 Layout 中使用，并不一律要求 `'use client'`。如果要使用 `onLoad`、`onReady` 或 `onError` 回调，所在组件必须是 Client Component；`onError` 不能与 `beforeInteractive` 一起使用。
 
-## 静态导出SSG
+## 静态导出与 SSG
 
-Next.js 支持静态站点生成（SSG，Static Site Generation），可以在构建时预先生成所有页面的静态 HTML 文件。这种方式特别适合内容相对固定的站点，如`官网`、`博客`、`文档`等，能够提供最佳的性能和 SEO 表现。
+Next.js 支持静态站点生成（SSG，Static Site Generation）。启用静态导出后，Next.js 会在构建时为可静态生成的路由输出 HTML、CSS 和 JavaScript 文件，适合官网、博客、文档等不依赖运行时服务器能力的站点。它通常有利于加载性能、部署成本和 SEO，但实际效果仍取决于页面内容、资源体积、缓存和部署方式。
 
 ### 注意事项
 
-以下功能在`SSG`中不支持：
+以下限制针对 `output: "export"` 的纯静态导出，并不代表所有 SSG 场景都不支持这些能力：
 
 - `Dynamic Routes with dynamicParams: true`
 - 动态路由没有使用 `generateStaticParams()`
@@ -1731,10 +1782,10 @@ Next.js 支持静态站点生成（SSG，Static Site Generation），可以在�
 
 ### 配置静态导出
 
-需要在`next.config.js`文件中配置`output`为`export`，表示导出静态站点。`distDir`表示导出目录，默认为`out`。
+需要在 `next.config.ts` 中把 `output` 配置为 `"export"`。执行 `next build` 后，默认输出目录是 `out`；也可以使用 `distDir` 修改该目录。
 
 ```ts
-// next.config.js
+// next.config.ts
 import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
@@ -1745,11 +1796,11 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-启动完成之后发现点击`a`标签无法进行跳转，是因为打完包之后的页面叫`about.html`, 而我们的跳转链接是`/about`，所以需要修改配置项。
+默认情况下，静态导出可能生成 `about.html`。`/about` 能否正常访问取决于静态托管服务是否会把无扩展名路径重写到对应 HTML 文件；这不是 `<a>` 标签本身的问题。
 
 ### 图片优化
 
-如果使用`Image`组件优化图片，在开发模式会进行报错
+纯静态导出没有运行中的 Next.js 图片优化服务，因此 `next/image` 的默认 loader 不受支持；这个限制主要会在静态导出构建或部署时体现，而不是笼统地说“开发模式会报错”。
 
 可能的解决方案：
 
@@ -1804,23 +1855,31 @@ export default function imageLoader({
 }: {
   src: string;
   width: number;
-  quality: number;
+  quality?: number;
 }) {
-  return `https://s41.ax1x.com${src}`;
+  const url = new URL(src, "https://images.example.com");
+  url.searchParams.set("w", String(width));
+  url.searchParams.set("q", String(quality ?? 75));
+  return url.toString();
 }
 ```
 
-```ts
+```tsx
 // src/app/about/page.tsx
-import Image from "next/image"
+import Image from "next/image";
 
 export default function About() {
-    return (
-        <div>
-            <h1>About</h1>
-            <Image loading="eager" src='/pZYbW7t.jpg' alt="logo" width={250 * 3} height={131 * 3} />
-        </div>
-    )
+  return (
+    <div>
+      <h1>About</h1>
+      <Image
+        src="/pZYbW7t.jpg"
+        alt="示例图片"
+        width={750}
+        height={393}
+      />
+    </div>
+  );
 }
 ```
 
@@ -1832,7 +1891,7 @@ export default function About() {
 
 ```tsx
 export async function generateStaticParams() {
-  //支持调用接口请求详情id列表 const res = await fetch('https://api.example.com/posts')
+  // 也可以在构建期间请求接口，取得需要预生成的 id 列表。
   return [
     { id: "1" }, //返回对应的详情id
     { id: "2" },
@@ -1855,7 +1914,7 @@ export default async function Post({
 
 ### 修改配置项
 
-> 打包后点击链接没有任何反应: 因为编译完成之后的页面叫`about.html`, 而我们的跳转链接是`/about`，所以需要修改配置项。 一般是需要配置nginx的代理, 也可以使用nextjs的配置。
+> 若静态托管服务不会自动把 `/about` 映射到 `about.html`，可以配置托管层重写；也可以启用 `trailingSlash`，改为输出 `/about/index.html`。应根据部署平台选择其中一种方式。
 
 需要在`next.config.js`文件中配置`trailingSlash`为`true`，表示添加尾部斜杠，生成`/about/index.html`而不是`/about.html`。
 
@@ -1872,36 +1931,34 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
-此时重新点击`a`标签就可以进行跳转了。
+启用后，请确认托管服务支持以目录索引文件响应 `/about/`。`trailingSlash` 解决的是输出路径与托管规则的匹配问题，并不能保证所有静态服务器都无需配置。
 
-## \*MDX
+## MDX
 
-`MDX`是一种将`Markdown`和`React`组件混合在一起的语法，它可以在`Markdown`中使用`React组件`，从而实现更复杂的页面。另外就是我们在编写技术文档或者博客的时候，配合SSG模式，用Markdown来编写.
+`MDX` 是 Markdown 的超集，可以在 Markdown 中编写 JSX，并组合 React 组件，适合技术文档和博客。MDX 可以配合静态生成使用，也可以在服务器渲染等场景中使用，并不依赖 SSG。
 
 - 安装依赖
 
 ```bash
-npm install @next/mdx @mdx-js/loader @mdx-js/react @types/mdx
 pnpm add @next/mdx @mdx-js/loader @mdx-js/react @types/mdx
 ```
 
 ### 启用MDX功能
 
-```ts {4-6,9,11}
-//next.config.js  固定配置
+```ts {4-6,9}
+// next.config.ts
 import type { NextConfig } from "next";
 import createMDX from "@next/mdx";
 const withMDX = createMDX({
-  //extension: /\.(md|mdx)$/ 默认只支持mdx文件, 如果想额外支持md文件编写次行代码。
+  extension: /\.(md|mdx)$/,
 });
 const nextConfig: NextConfig = {
-  reactCompiler: true,
-  pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"], // 配置后缀 支持mdx
+  pageExtensions: ["js", "jsx", "md", "mdx", "ts", "tsx"],
 };
 export default withMDX(nextConfig);
 ```
 
-根目录下面创建mdx-components.tsx文件
+使用 App Router 与 `@next/mdx` 时，还必须在项目根目录（使用 `src` 目录时也可放在 `src` 内）创建 `mdx-components.tsx` 文件：
 
 ```tsx
 // mdx-components.tsx
@@ -1916,7 +1973,7 @@ export function useMDXComponents(): MDXComponents {
 
 ### 代码高亮
 
-安装`MDX`插件
+代码高亮并不是 `@next/mdx` 默认自带的完整能力。可以按所选方案配置兼容的 remark/rehype 插件，并同时加载相应样式；使用 Turbopack 时还应确认插件能够被序列化，通常以字符串形式配置插件名称。
 
 ### 基础使用
 
@@ -1924,7 +1981,7 @@ export function useMDXComponents(): MDXComponents {
 
 ### 引入自定义组件
 
-引入自定义组件一定要跟md语法之间空一行，否则会报错
+在 MDX 中导入并使用自定义组件时，应遵循 ESM 与 Markdown 的块级语法。通常在 `import` 语句和后续 Markdown 内容之间保留空行更清晰，也能避免内容被解析成同一块；但“任何组件与 Markdown 之间不空行都会报错”并不是通用规则。
 
 ### 全局样式
 
@@ -1965,18 +2022,25 @@ pnpm add next-mdx-remote-client
 import { MDXRemote } from "next-mdx-remote-client/rsc";
 export default async function Home() {
   const res = await fetch("https://xxx.com");
+  if (!res.ok) {
+    throw new Error(`加载远程 MDX 失败：${res.status}`);
+  }
   const source = await res.text();
   return <MDXRemote source={source} />;
 }
 ```
 
-## Server Actions (服务器函数)
+远程 MDX 会被编译并执行，其中可以包含 JavaScript 表达式。只能加载完全可信、经过发布流程控制的内容；普通 HTML 清洗不能消除所有 MDX 代码执行风险，不要直接渲染用户提交或来源不明的 MDX。
 
-服务器函数指的是可以是服务器组件处理表单的提交，无需手动编写API接口，并且还支持数据的验证，以及状态管理等。
+## Server Functions 与 Server Actions
+
+Server Function 是使用 `"use server"` 标记、在服务器上执行的异步函数；在表单提交或数据变更等 Action 场景中使用时，通常称为 Server Action。它可以从服务端组件或客户端组件触发，常用于处理表单、校验数据和更新持久化数据，无需再为同一操作手写 Route Handler。
+
+Server Action 本质上仍是可从客户端发起的网络入口。必须在函数内部重新进行身份认证、权限校验和输入校验，不能因为代码运行在服务器上就信任客户端参数。
 
 ### 核心原理
 
-是因为React扩展了原生`HTMLform`表单，允许通过`action`属性直接绑定`server action`函数，当表单提交后，函数会自动接受原生的`FormData`数据。
+React 扩展了原生 `<form>`，允许通过 `action` 属性绑定函数。绑定 Server Action 时，提交会通过 `POST` 请求调用服务器函数，函数默认接收原生 `FormData`。在服务端组件中，这种表单还支持渐进式增强：即使客户端 JavaScript 尚未加载或被禁用，也可以提交。
 
 ### 基本用法
 
@@ -1996,8 +2060,7 @@ export default function Login() {
     "use server"; // 内联函数
     const username = formData.get("username"); // 接受单个参数
     const password = formData.get("password"); // 接受单个数据
-    const form = Object.fromEntries(formData); // 接受所有数据 {username: '张三', password: '123456'}
-    // fromEntries序列化函数
+    const form = Object.fromEntries(formData); // 转成普通对象后再进行校验
     // 可以直接操作数据库，这样就无需编写API接口
   }
   return (
@@ -2030,13 +2093,15 @@ export default function Login() {
 }
 ```
 
+`FormData` 的值可能是字符串或 `File`，不能直接假定全部为字符串。框架还可能在表单数据中加入以 `$ACTION_` 开头的内部字段，因此批量转换后应只提取并校验业务需要的字段。
+
 ### 额外参数
 
-目前只能携带固定参数例如 `username` `password`, 无法携带其他参数。
+表单可以通过任意具名控件提交字段。如果还需要传入不适合作为可编辑表单字段的上下文参数，例如当前记录 ID，可以使用 `bind` 创建一个带预绑定参数的 Server Action。
 
 > 那么我想携带`ID`或者其他自定义参数怎么做？
 
-我们需要使用`bind`方法来进行参数扩展，这样在函数内部就可以接收到`ID`参数。
+使用 `bind` 后，预绑定参数位于 `FormData` 之前。客户端仍能构造请求，因此 ID 只能作为待校验的输入，不能作为授权依据。
 
 ```tsx {3,10,16}
 export default function Login() {
@@ -2082,7 +2147,7 @@ export default function Login() {
 
 ### 参数校验(zod) + 读取状态
 
-zod是一个目前非常流行的`数据验证`库，可以让我们在服务器端进行数据验证，避免用户输入非法数据。
+Zod 是一个数据验证库，可以在服务器端把不可信输入解析为明确的业务数据。校验能拒绝格式不符合要求的输入，但仍需单独完成身份认证、授权、限流和数据库约束。
 
 安装:
 
@@ -2095,13 +2160,14 @@ npm i zod
 `useActionState` hook接受三个参数:
 
 - `fn`: 表单提交时触发的函数，接收上一次的 state（首次为 initialState）作为第一个参数，其余参数为表单参数
-- `initialState: state` 的初始值，可以是任何可序列化的值 -` permalink`(可选): 表单提交后跳转的 URL，用于 JavaScript 加载前的渐进式增强
+- `initialState`：状态初始值；与 Server Function 配合时必须可序列化
+- `permalink`（可选）：在 JavaScript 尚未加载时提交表单所导航到的稳定 URL；目标页面必须渲染相同的表单、Action 与 permalink，React 才能继续传递状态
 
 返回值:
 
 - `state`: 当前状态，初始值为 initialState，之后为 action 的返回值
 - `formAction`: 新的 action 函数，用于传递给 form 或 button 组件
-- `isPending`: 布尔值，表示是否有正在进行的 Transition
+- `isPending`：布尔值，表示该 Action 是否仍在进行
 
 ```tsx
 // src/app/login/page.tsx
@@ -2119,7 +2185,7 @@ export default function Login() {
     <div>
       <h1>登录页面</h1>
       {isPending && <div>Loading...</div>}
-      {state.message}
+      <p aria-live="polite">{state.message}</p>
       <div className="flex flex-col gap-2 w-[300px] mx-auto mt-30">
         <form action={formAction} className="flex flex-col gap-2">
           <input
@@ -2136,6 +2202,7 @@ export default function Login() {
           />
           <button
             type="submit"
+            disabled={isPending}
             className="bg-blue-500 text-white p-2 rounded-md"
           >
             登录
@@ -2156,47 +2223,53 @@ const loginSchema = z.object({
   password: z.string().min(6, "密码不能少于6位"), // zod基本用法表示这是一个字符串，并且不能少于6位
 });
 
-export async function handleLogin(_prevState: any, formData: FormData) {
-  const result = loginSchema.safeParse(Object.fromEntries(formData)); // 调用zod的safeParse方法进行校验
+type LoginState = { message: string };
+
+export async function handleLogin(
+  _prevState: LoginState,
+  formData: FormData,
+): Promise<LoginState> {
+  const result = loginSchema.safeParse({
+    username: formData.get("username"),
+    password: formData.get("password"),
+  });
 
   if (!result.success) {
-    const errorMessage = z.treeifyError(result.error).properties; // 调用zod的treeifyError方法将错误信息转换为对象
-    let str = "";
-    Object.entries(errorMessage!).forEach(([_key, value]) => {
-      value.errors.forEach((error: any) => {
-        str += error + "\n"; // 将错误信息拼接成字符串
-      });
-    });
-    return { message: str }; // 返回错误信息
+    const { fieldErrors, formErrors } = z.flattenError(result.error);
+    const messages = [...formErrors, ...Object.values(fieldErrors).flat()];
+    return { message: messages.join("；") };
   }
-  // 校验成功，进行数据库操作逻辑
-  return { message: "登录成功" }; //返回成功信息
+
+  // 此处仍需完成限流、认证服务调用或数据库查询等真实登录逻辑。
+  return { message: "输入格式校验通过" };
 }
 ```
 
 ## 环境变量
 
-环境变量一般是指程序在运行时，所需要的一些配置信息，例如数据库连接字符串，API密钥，端口号等。其次就是环境变量跟我们的操作系统有关，例如Linux，Windows，Mac等。
+环境变量是从进程外部传入的键值配置，常用于数据库连接字符串、API 密钥和端口号等。操作系统、容器平台和部署服务都可以提供环境变量，Next.js 还会按约定加载项目根目录中的 `.env*` 文件。
 
 ### 最佳实践
 
-因为上述方式依旧麻烦，如果有很多的环境变量，我们的命令就会变得非常长，所以我们可以使用.env文件来存储环境变量。
+当变量较多时，可以使用 `.env` 文件保存本地配置。`.env*` 通常包含密钥，不应提交到版本库；使用 `src` 目录时，这些文件仍应放在项目根目录，而不是 `src` 内。
 
 Next.js 环境变量查找规则(官方规定)，如果在其中一个链路中找到了环境变量，那么就不会继续往下找了。
 
 1. `process.env`
 2. `.env.$(NODE_ENV).local`
-3. `.env.local`（未检查的情况NODE_ENV。test）
+3. `.env.local`（`NODE_ENV=test` 时不加载）
 4. `.env.$(NODE_ENV)`
 5. `.env`
 
-> 提示：NODE_ENV是Next.js自动注入的环境变量，开发模式他会注入`development`，生产模式他会注入`production`。
+> 提示：Next.js 会根据执行命令设置 `NODE_ENV`：`next dev` 使用 `development`，其他 Next.js 命令通常使用 `production`，测试工具可使用 `test`。不应自行定义其他 `NODE_ENV` 值。
 
-可以创建两个不同的env文件，一个是开发环境，一个是生产环境。 `.env.development.local`和 `.env.production.local`
+可以分别创建 `.env.development.local` 和 `.env.production.local`，存放仅用于本机开发或本机生产构建的覆盖值。
+
+未以 `NEXT_PUBLIC_` 开头的变量只应在服务器代码中读取。`NEXT_PUBLIC_` 变量会在构建时内联进浏览器包，构建完成后再修改部署环境中的同名变量不会改变已经生成的客户端代码。任何发送到客户端的变量都不能包含秘密。
 
 ## i18n (国际化)
 
-国际化(Internationalization) 是Next.js提供的一种机制，用于支持多语言的网站，例如可以实现中英文切换，包括接口同步翻译，以及不同语言所展示的页面不一样等。
+国际化（Internationalization，i18n）是让应用适配不同语言和地区的设计过程。App Router 提供动态路由、Proxy 等基础能力，但翻译内容、语言协商和切换策略仍需应用自行实现或交给国际化库；Next.js 不会自动翻译接口数据。
 
 一般我们把语言和地区组合起来，称为`locale`，例如`en-US`表示英语(美国)，`zh-CN`表示中文(中国)。
 
@@ -2206,26 +2279,26 @@ Next.js建议我们使用http报文头来判断用户使用的语言`Accept-Lang
 
 #### Accept-Language规则
 
-`zh-CN,zh;q=0.9,en;q=0.8` 表示用户使用中文(中国)，权重为1(最大值1会被省略)，中文(中国)权重为0.9，英语(美国)权重为0.8。
+`zh-CN,zh;q=0.9,en;q=0.8` 表示 `zh-CN` 的质量值为 1（省略了 `q=1`）、通用中文 `zh` 为 0.9、通用英语 `en` 为 0.8。它没有声明 `en-US`。
 
 #### 安装第三方库
 
 ```bash
-npm i negotiator # 用于解析Accept-Language
-npm i @formatjs/intl-localematcher # 用于匹配语言
-
-pnpm add negotiator
-pnpm add @formatjs/intl-localematcher
+pnpm add negotiator @formatjs/intl-localematcher
+pnpm add -D @types/negotiator
 ```
 
 #### 测试用例
 
-1. 新建dictionary文件夹，里面存放多语言文件，例如`zh-CN.json`，`en-US.json`。
+1. 新建 `dictionaries` 文件夹，存放多语言文件，例如 `zh.json`、`en.json`。
 2. 创建一个文件`i18n.ts`，用于处理多语言。
 
 ```ts
-export const i18n = ["en", "zh"] as const; // 支持的语言
-export const defaultLocale = ["en"] as const; // 默认语言
+import "server-only";
+
+export const locales = ["en", "zh"] as const;
+export type Locale = (typeof locales)[number];
+export const defaultLocale: Locale = "en";
 
 export type Dictionary = {
   title: string;
@@ -2233,45 +2306,70 @@ export type Dictionary = {
   keywords: string;
 };
 
-const getDictionary = async (
-  locale: (typeof i18n)[number],
-): Promise<Dictionary> => {
-  return await import(`./dictionary/${locale}.json`);
+const dictionaries: Record<Locale, () => Promise<{ default: Dictionary }>> = {
+  en: () => import("./dictionaries/en.json"),
+  zh: () => import("./dictionaries/zh.json"),
 };
+
+export const hasLocale = (value: string): value is Locale =>
+  Object.hasOwn(dictionaries, value);
+
+export async function getDictionary(locale: Locale): Promise<Dictionary> {
+  return (await dictionaries[locale]()).default;
+}
 ```
 
 3. 创建一个动态页面 `/src/app/[lang]/page.tsx`
 
 ```tsx
+// src/app/[lang]/page.tsx
+import { notFound } from "next/navigation";
+import { getDictionary, hasLocale } from "@/app/i18n";
 
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}) {
+  const { lang } = await params;
+  if (!hasLocale(lang)) notFound();
+
+  const dictionary = await getDictionary(lang);
+  return <h1>{dictionary.title}</h1>;
+}
 ```
 
-4. 创建一个proxy 文件 `/src/app/proxy.tsx`
+4. 创建 Proxy 文件 `/src/proxy.ts`。它应与 `app` 目录同级，不能放在 `src/app` 内。
 
 ```ts
-import { NextRequest, NextResponse } from "next/server";
-import { i18n, defaultLocale } from "@/app/dictionary/i18n";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { locales, defaultLocale } from "@/app/i18n";
 import Negotiator from "negotiator"; // 用于解析Accept-Language
 import { match } from "@formatjs/intl-localematcher";
-export default function proxy(req: NextRequest, res: NextResponse) {
-  if (req.nextUrl.pathname === "/") {
-    return NextResponse.next(); // 继续执行请求，不做任何修改。
+
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const pathnameHasLocale = locales.some(
+    (locale) => pathname === `/${locale}` || pathname.startsWith(`/${locale}/`),
+  );
+  if (pathnameHasLocale) {
+    return NextResponse.next();
   }
-  if (i18n.some((locale) => req.nextUrl.pathname.startsWith(`/${locale}`))) {
-    return NextResponse.next(); // 防止递归
-  }
+
   const language = new Negotiator({
     headers: {
-      "accept-language": req.headers.get("accept-language") || "",
+      "accept-language": request.headers.get("accept-language") ?? "",
     },
   }).languages();
-  const locale = match(language, i18n, defaultLocale);
-  req.nextUrl.pathname = `/${locale}${req.nextUrl.pathname}`;
-  return NextResponse.redirect(req.nextUrl);
+  const locale = match(language, [...locales], defaultLocale);
+  request.nextUrl.pathname = `/${locale}${pathname}`;
+  return NextResponse.redirect(request.nextUrl);
 }
 
 export const config = {
-  matcher: "/((?!api|_next/static|_next/image|favicon.ico).*)", // 跳过内部匹配路径
+  matcher:
+    "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)",
 };
 ```
 
@@ -2282,19 +2380,21 @@ export const config = {
 // 这个组件是语言切换组件，他会根据当前语言切换到对应语言的页面，
 // 例如当前语言为zh，则切换到/zh/home页面，当前语言为en，则切换到/en/home页面等
 "use client";
-import { locales } from "@dict/index";
+import { locales, type Locale } from "@/app/i18n";
 import { usePathname, useRouter } from "next/navigation";
-export default function SwitchI18n({ lang }: { lang: string }) {
+export default function SwitchI18n({ lang }: { lang: Locale }) {
   const pathname = usePathname(); // 获取当前路径
   const router = useRouter(); // 获取路由实例
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newLang = e.target.value; // 获取新语言
-    const newPath = pathname.replace(`/${lang}`, `/${newLang}`); // 替换语言
+    const newLang = e.target.value as Locale;
+    const segments = pathname.split("/");
+    segments[1] = newLang;
+    const newPath = segments.join("/");
     router.replace(newPath); // 跳转新路径
   };
   return (
     <div>
-      <select value={lang} onChange={handleChange}>
+      <select aria-label="切换语言" value={lang} onChange={handleChange}>
         {locales.map((locale) => (
           <option key={locale} value={locale}>
             {locale}
@@ -2310,14 +2410,16 @@ export default function SwitchI18n({ lang }: { lang: string }) {
 
 ```tsx
 // src/app/[lang]/home/page.tsx
-import { getDictionary } from "@dict/index";
-import SwitchI18n from "./switchI18n";
+import { notFound } from "next/navigation";
+import { getDictionary, hasLocale } from "@/app/i18n";
+import SwitchI18n from "./SwitchI18n";
 export default async function Home({
   params,
 }: {
   params: Promise<{ lang: string }>;
 }) {
   const { lang } = await params;
+  if (!hasLocale(lang)) notFound();
   const dictionary = await getDictionary(lang);
   return (
     <div>
@@ -2330,9 +2432,9 @@ export default async function Home({
 }
 ```
 
-## next.config.js配置
+## next.config.js 配置
 
-使用率超过50%的配置项
+下面整理一些常见配置项。是否需要使用取决于部署方式和应用需求，不存在适用于所有项目的固定清单。
 
 ### 根据不同环境进行配置
 
@@ -2354,12 +2456,11 @@ export declare const PHASE_INFO = "phase-info"; // 信息
 //next.config.ts
 import {
   PHASE_DEVELOPMENT_SERVER,
-  PHASE_TYPE,
   PHASE_PRODUCTION_BUILD,
 } from "next/constants"; // 不需要安装 直接引入即可
 import type { NextConfig } from "next";
 
-export default (phase: PHASE_TYPE): NextConfig => {
+export default (phase: string): NextConfig => {
   const nextConfig: NextConfig = {
     reactCompiler: false,
   };
@@ -2382,13 +2483,15 @@ export default (phase: PHASE_TYPE): NextConfig => {
 
 直接在`package.json`文件中配置`scripts` (配置文件中没有配置端口选项)
 
-```json
+```jsonc
 // package.json
+{
   "scripts": {
     "dev": "next dev -p 1111", // 开发环境端口号
     "build": "next build",
-    "start": "next start -p 3333 " // 生产环境端口号
-  },
+    "start": "next start -p 3333" // 生产环境端口号
+  }
+}
 ```
 
 ### Next.js导出静态站点 (SSG章节总结过)
@@ -2409,7 +2512,7 @@ export default nextConfig;
 
 ### Next.js配置图片优化 (图片章节总结过)
 
-Next.js的 `Image`组件默认只允许加载本地图片，如果需要加载远程图片，需要配置`next.config.js`文件。
+Next.js 的 `Image` 组件可以加载本地图片；加载远程 URL 时，需要通过 `remotePatterns` 明确允许协议、主机名和路径，以限制可被图片优化服务请求的来源。
 
 ```ts
 import type { NextConfig } from "next";
@@ -2434,7 +2537,7 @@ const nextConfig: NextConfig = {
 
 ### 自定义响应标头
 
-例如配置`CORS`跨域，或者是自定义响应标头等，只要是http支持的[响应头](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Reference/Headers)都可以配置。
+`headers` 可以给匹配的响应添加自定义 HTTP 头。下面以不携带凭据的宽松 CORS 头为例；生产环境通常应使用明确的来源白名单。
 
 ```ts
 const nextConfig: NextConfig = {
@@ -2471,6 +2574,8 @@ const nextConfig: NextConfig = {
 };
 ```
 
+仅添加这些头不一定构成完整的 CORS 实现：路由还必须正确响应预检 `OPTIONS` 请求；若要携带 Cookie，则不能把 `Access-Control-Allow-Origin` 设置为 `*`，还需按请求来源返回允许值并配置凭据相关响应头。
+
 [HTTP响应头](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers)
 
 ### assetPrefix 配置静态资源前缀
@@ -2492,26 +2597,18 @@ export default nextConfig;
 
 ### basePath 配置应用前缀
 
-应用前缀：也就是跳转路径中增加前缀，例如前缀是`/docs`，那么跳转`/home`就需要跳转到`/docs/home`。访问根目录也需要增加前缀，例如访问`/`就需要跳转到`/docs`。这里可以配合重定向来实现。访问`/`自动跳转到`/docs`。
+`basePath` 用于把应用部署在域名的子路径下。例如设置为 `/docs` 后，应用中的 `/home` 实际位于 `/docs/home`。该值会在构建时写入客户端包，修改后必须重新构建。
 
 ```ts
 import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   basePath: "/docs", // 基础路径
-  redirects() {
-    return [
-      {
-        source: "/", // 源路径
-        destination: "/docs", // 目标路径
-        basePath: false, // 是否使用basePath 默认情况下 source 和 destination 都会自动加上 basePath 前缀 就变成了/docs/docs 所以这儿不需要增加
-        permanent: false, // 是否永久重定向
-      },
-    ];
-  },
 };
 
 export default nextConfig;
 ```
+
+`basePath` 本身不会要求域名根路径 `/` 自动跳到 `/docs`。通常应在反向代理或托管平台配置这个站外入口重定向。Next.js 的 redirects 中，`basePath: false` 只用于不加 basePath 的外部重定向，不能用它把 `/` 内部重定向到 `/docs`。
 
 如果使用`link`跳转的话，无需增加`basePath`前缀，因为`Link`组件会自动增加`basePath`前缀。 当他跳转`/home`时，会自动跳转到`/docs/home`。
 
@@ -2529,7 +2626,7 @@ export default function Page() {
 
 ### compress
 
-compress配置用于`配置压缩`，例如：压缩js/css/html等。默认情况是`开启`的，如果需要关闭，可以配置为false。
+`compress` 控制 Next.js 服务器在没有自定义压缩方案时是否对响应启用 gzip，默认开启。它不是用来控制构建工具是否压缩 JavaScript/CSS，也不影响纯静态导出文件在外部静态服务器上的传输压缩。
 
 ```ts
 import type { NextConfig } from "next";
@@ -2542,7 +2639,7 @@ export default nextConfig;
 
 ### 日志配置
 
-日志配置用于配置日志，例如：显示完整的URL等。
+`logging` 用于开发环境日志。当前 `fetches` 配置只影响通过 `fetch` 发起的数据请求日志，例如是否显示完整 URL。
 
 ```ts
 import type { NextConfig } from "next";
@@ -2559,7 +2656,7 @@ export default nextConfig;
 
 ### 页面扩展 (参考MDX)
 
-默认情况下，Next.js 接受以下扩展名的文件：`.tsx.js`、 `.js`、 `.ts`、`.jsx.md`、`.js.js`。可以修改此设置以允许其他扩展名，例如 markdown（.md.md、.md .mdx）。
+默认页面扩展名为 `.tsx`、`.ts`、`.jsx` 和 `.js`。可以通过 `pageExtensions` 增加 `.md`、`.mdx` 等扩展名。修改该配置会影响 Next.js 识别的所有特殊文件和页面文件，因此自定义诸如 `.page.tsx` 的后缀时也要相应重命名这些文件。
 
 ### devIndicators
 
@@ -2579,7 +2676,7 @@ export default nextConfig;
 
 ### generateEtags
 
-Next.js会为静态文件生成`ETag`，用于`缓存控制`。默认情况下是`开启`的，如果需要关闭，可以配置为`false`。
+Next.js 默认会为页面响应生成 `ETag`，客户端或中间缓存可以用它进行条件请求。`generateEtags: false` 可关闭该行为；它不是为 `public` 目录中的每个静态文件统一生成 ETag 的开关。
 
 浏览器会根据`ETag`来判断文件是否发生变化，如果发生变化，则重新下载文件。
 
@@ -2596,18 +2693,20 @@ export default nextConfig;
 
 Next.js已内置`turbopack`进行打包编译等操作，所以允许透传配置项给turbopack。
 
-一般情况下是不需要做太多优化的，因为它都内置了例如`tree-shaking`、`压缩`、`按需编译`、`语法降级`等优化。
+多数项目无需修改 Turbopack 配置；只有需要自定义解析别名、文件扩展名或 loader 等行为时再配置。具体支持范围应以当前 Next.js 文档为准，不能把所有打包优化都概括为由这个配置项自动完成。
 
 具体用法请查看: [turbopack](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack)
 
 ## Next.js CSS方案
 
-- Tailwind CSS(个人推荐)
-- CSS Modules(创建css模块化，类似于Vue的单文件组件)
-- Next.js内置Sass(css预处理器)
-- 全局Css(全局的css，可以全局使用)
-- Style(内联样式)
-- css-in-js(类似于React的styled-components，不推荐)
+- Tailwind CSS
+- CSS Modules（通过文件级局部类名避免全局冲突）
+- Sass（安装 `sass` 后使用 `.scss` 或 `.sass`）
+- 全局 CSS
+- 内联 `style`
+- CSS-in-JS
+
+CSS-in-JS 并非一概“不推荐”，但运行时 CSS-in-JS 库通常需要客户端状态和样式注册表，不能直接在 Server Components 中使用。选型时应确认目标库对 App Router、流式渲染和 Server Components 的支持方式。
 
 ## SEO
 
@@ -2615,8 +2714,8 @@ Next.js已内置`turbopack`进行打包编译等操作，所以允许透传配�
 
 SEO(Search Engine Optimization)，即`搜索引擎优化`，是一种通过优化网站结构和内容，提高网站在搜索引擎中的排名，从而吸引更多流量和用户的策略。
 
-::: tips
-SEO是一个长期优化过程(一般优化1-3个月才能看到效果)，无需急于求成。
+::: tip
+SEO 通常需要持续建设内容、可抓取性、性能和站点信誉。收录与排名生效时间没有统一的“1—3 个月”保证，应结合搜索平台报告、访问日志和真实流量长期观察。
 :::
 
 #### 黑帽SEO
@@ -2641,15 +2740,17 @@ Google 搜索的工作流程分为 3 个阶段:
 
 抓取 --> 索引编制 --> 呈现搜索结果
 
-### 排名标准
+### 常见影响因素
 
-- 相关性
-- 权威性
-- 用户体验
+- 内容与搜索意图的相关性和质量
+- 站点与内容的可信度、权威性
+- 页面体验、移动端可用性与可访问性
+
+搜索引擎的排序系统包含大量信号且会持续变化，上述只是概括，不能当作完整或固定的排名公式。
 
 ### robots.txt
 
-robots.txt是搜索引擎爬虫访问网站时遵循的规则，它告诉搜索引擎哪些页面可以抓取，哪些页面不能抓取。一般是存放在网站根目录下。
+`robots.txt` 是放在站点根路径的爬虫访问约定，用来声明哪些路径允许或不允许特定爬虫抓取。它不是访问控制或保密机制，恶意爬虫可以忽略它；而且禁止抓取也不等同于保证不被索引。敏感内容必须通过认证和授权保护，需要阻止索引时应使用适当的 `noindex` 机制并允许爬虫读取该指令。
 
 #### 参数说明
 
@@ -2671,7 +2772,7 @@ Sitemap:
 sitemap是网站地图的URL
 
 Host:
-host是网站的域名
+`Host` 是部分爬虫支持的非标准扩展，并不属于通用 robots.txt 标准，Google 也不使用它。不要把它当作跨搜索引擎通用的主域名声明。
 
 ### Next.js中实现robots.txt
 
@@ -2720,9 +2821,9 @@ export default function robots(): MetadataRoute.Robots {
         crawlDelay: 10,
       },
     ],
-    sitemap: "xxxx", //网站地图的URL
+    sitemap: "https://example.com/sitemap.xml", // 网站地图必须使用完整URL
     //如果有多个可以写成一个数组
-    //sitemaps: ['https://www.xxxxxx.com/sitemap.xml', 'https://www.xxxxxx.com/sitemap2.xml'],
+    // sitemap: ['https://example.com/sitemap.xml', 'https://example.com/sitemap-2.xml'],
   };
 }
 ```
@@ -2769,7 +2870,7 @@ sitemap.xml 是网站地图，用来向搜索引擎提供一批`希望被发现�
 **注意**：这是协议里的提示字段。以 Google 为例，官方文档说明 **不会用 changefreq（以及下面的 priority）来决定抓取频率或排序**；其他爬虫是否参考也不统一。可填作兼容或自研爬虫的提示，但不要指望靠它“控制抓取周期”。
 
 `priority`（可选）
-**仅相对同一站点内**其他 URL 的重要程度，浮点数 `0.0–1.0`，默认 `0.5`。不是“全互联网排名优先级”，爬虫机器人会根据这个字段来决定抓取页面的优先级。(数字越大表示权重越高，爬虫机器人就会优先抓取)
+**仅相对同一站点内**其他 URL 的重要程度，浮点数 `0.0–1.0`，协议默认值为 `0.5`。它不是“全互联网排名优先级”，搜索引擎也不一定采用；Google 明确忽略 `priority` 和 `changefreq`。
 
 图片扩展（可选）
 在 **某个` <url>` 条目内** 使用 Google 图片扩展：`<image:image>`，命名空间一般为 `http://www.google.com/schemas/sitemap-image/1.1`。常见子标签：
@@ -2820,7 +2921,7 @@ sitemap.xml 是网站地图，用来向搜索引擎提供一批`希望被发现�
   <url>
     <loc>https://example.com</loc>
     <image:image>
-      <image:loc>http://localhost:3000/xxxxxxxxxx.jpg</image:loc>
+      <image:loc>https://example.com/images/cover.jpg</image:loc>
     </image:image>
     <lastmod>2026-04-19T20:21:06.903Z</lastmod>
     <changefreq>yearly</changefreq>
@@ -2830,10 +2931,11 @@ sitemap.xml 是网站地图，用来向搜索引擎提供一批`希望被发现�
     <loc>https://example.com/about</loc>
     <video:video>
       <video:title>视频标题</video:title>
-      <video:thumbnail_loc>http://localhost:3000/xxxxxxxxxx.jpg</video:thumbnail_loc>
+      <video:thumbnail_loc>https://example.com/images/video-cover.jpg</video:thumbnail_loc>
       <video:description>视频描述</video:description>
+      <video:content_loc>https://example.com/videos/demo.mp4</video:content_loc>
       <video:duration>100</video:duration>
-      <video:publication_date>Mon Apr 20 2026 04:21:06 GMT+0800 (中国标准时间)</video:publication_date>
+      <video:publication_date>2026-04-20T04:21:06+08:00</video:publication_date>
     </video:video>
     <lastmod>2026-04-19T20:21:06.903Z</lastmod>
     <changefreq>monthly</changefreq>
@@ -2861,7 +2963,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: new Date(),
       changeFrequency: "yearly",
       priority: 1,
-      images: ["http://localhost:3000/xxxxxxxxxx.jpg"],
+      images: ["https://example.com/images/cover.jpg"],
     },
     {
       url: "https://example.com/about",
@@ -2870,9 +2972,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
       videos: [
         {
-          thumbnail_loc: "http://localhost:3000/xxxxxxxxxx.jpg",
+          thumbnail_loc: "https://example.com/images/video-cover.jpg",
           title: "视频标题",
           description: "视频描述",
+          content_loc: "https://example.com/videos/demo.mp4",
           duration: 100,
           publication_date: new Date(),
         },
@@ -2900,11 +3003,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
 **如何访问**
 
-1. 子站点地图地址形如：`/sitemap/{id}.xml`，其中 `{id}` 与 `generateSitemaps()` 里返回的 `id` 一致（例如 `id: '1'` → 浏览器打开 `http://localhost:3000/sitemap/1.xml`）。
+1. 子站点地图地址形如：`/sitemap/{id}.xml`，其中 `{id}` 与 `generateSitemaps()` 里返回的 `id` 一致（例如 `id: 1` → 浏览器打开 `http://localhost:3000/sitemap/1.xml`）。Next.js 16 中，默认导出的 `sitemap` 函数接收的 `id` 是一个解析为字符串的 Promise。
 2. 若文件放在嵌套路由下（例如 `app/products/sitemap.ts`），则前缀会带上段路径，形如 `/products/sitemap/{id}.xml`（见 [generateSitemaps](https://nextjs.org/docs/app/api-reference/functions/generate-sitemaps) 文档中的 URL 说明）。
-3. 启用多份 `sitemap` 后，根路径一般还会提供 `/sitemap.xml` 作为 站点**地图索引（sitemap index）**，里面列出各子 sitemap 的 URL，提交给搜索引擎时通常 **优先提交这份索引**。
+3. `generateSitemaps` 会生成各个子 sitemap 路径，但不应假定框架一定额外生成 `/sitemap.xml` 索引。若搜索平台需要统一入口，应自行提供 sitemap index，或分别提交生成的子 sitemap URL。
 
-### \*TDK
+### TDK
 
 TDK 是` Title`、`Description`、`Keywords` 的缩写，是 SEO（搜索引擎优化）里的**核心元**信息，也常统称为页面的元数据。
 
@@ -2912,7 +3015,7 @@ TDK 是` Title`、`Description`、`Keywords` 的缩写，是 SEO（搜索引擎�
 
 #### TDK 的作用
 
-`title`: title 是页面标题，通常会出现在浏览器标签页和搜索引擎结果页（SERP）上，`**对点击率影响最大**`。建议简洁、准确，并体现当前页与站点/栏目的关系（例如与根布局的 `title.template` 搭配使用，见下文）。
+`title`：页面标题通常会出现在浏览器标签页，也可能作为搜索结果标题。它会影响用户是否点击，但搜索引擎可能根据查询和页面内容改写展示标题。建议简洁、准确，并体现当前页与站点或栏目的关系。
 
 `description`: description 是页面摘要，常被用作 SERP 中的描述文案（搜索引擎也可能根据内容自行改写）。应用一两句话概括页面价值，**避免堆砌关键词**。
 
@@ -2942,7 +3045,7 @@ export const metadata: Metadata = {
 };
 ```
 
-如果不想继承父组件的想自定义, 复制上述代码, 放到`/about/layout.tsx`下, 修改成想要的就行 (写了就按照子组件的, 没写的就继承父组件的)
+如果需要为子路由自定义元数据，可以在对应的 `layout.tsx` 或 `page.tsx` 中再次导出。元数据按路由段从根到叶进行浅合并：未设置的顶层字段会继承；一旦子级设置 `openGraph`、`robots` 等嵌套对象，该对象会整体替换父级同名对象，而不是逐个子字段深度合并。
 
 根布局里还可以用 `title.default` + `title.template`，让子页面只写短标题、全站自动带上后缀(模版 后缀)
 
@@ -2956,7 +3059,6 @@ export const metadata: Metadata = {
   description: "默认标题描述",
   keywords: ["关键词1", "关键词2"],
 };
-...
 ```
 
 子页面写 `title: '首页'` 时，在支持模板合并的情况下，浏览器标题可呈现为 `首页 | 默认标题`。
@@ -3001,8 +3103,6 @@ type Props = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>; // ?a=1&b=2
 };
 
-type Paremt = Promise<ResolvingMetadata>;
-
 export async function generateMetadata(
   { params }: Props,
   parent: ResolvingMetadata,
@@ -3017,9 +3117,11 @@ export async function generateMetadata(
   const data = await res.json();
 
   return {
-    title: `${data.title} | ${resolvedParent.title?.absolute ?? "文章"}`,
+    title: data.title,
     description: data.body.slice(0, 150),
-    keywords: [data.title],
+    openGraph: {
+      images: resolvedParent.openGraph?.images ?? [],
+    },
   };
 }
 
@@ -3079,12 +3181,7 @@ export default async function Page({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Blog",
-            "@id": "https://example.com/products/123",
-            name: "这是一个博客",
-          }),
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
         }}
       />
       <h1>{product.name}</h1>
@@ -3101,7 +3198,7 @@ export default async function Page({
 JSON.stringify(jsonLd).replace(/</g, "\\u003c");
 ```
 
-如果团队有统一的安全序列化方案，也可以采用社区库（如 `serialize-javascript`）或公司内部安全工具。
+如果团队有统一的安全 JSON 序列化方案，也可以使用经过审计的工具；无论采用哪种方式，都应保证输出仍是合法 JSON，并避免把用户可控内容拼接成脚本文本。
 
 #### TypeScript 类型约束（推荐）
 
@@ -3141,7 +3238,7 @@ const jsonLd: WithContext<Product> = {
 
 ### Open Graph (OG)
 
-**Open Graph** 是 Facebook（现 Meta）提出的一套页面元数据协议，通过 `<meta property="og:*">` 描述标题、描述、封面图、类型等。当链接被分享到微信、Slack、Discord、LinkedIn 等平台时，抓取方会读取这些标签来生成`卡片预览`，因此 OG 与 `SEO`（点击率、品牌呈现）和 `传播体验` 都密切相关。
+**Open Graph** 是 Facebook（现 Meta）提出的一套页面元数据协议，通过 `<meta property="og:*">` 描述标题、描述、封面图、类型等。许多社交平台和通信工具会读取这些标签生成链接卡片；是否支持、如何缓存及展示由各平台决定。OG 主要改善分享呈现，不应直接等同于搜索排名因素。
 
 在 App Router 中，Next.js 通过导出 `metadata` 或 `generateMetadata` 中的 `openGraph` 字段，自动生成对应的 OG 标签，无需手写整段 `<head>`。官方说明见 [Metadata API](https://nextjs.org/docs/app/api-reference/functions/generate-metadata) 与 [Optimizing Metadata](https://nextjs.org/docs/app/building-your-application/optimizing/metadata)。
 
@@ -3156,7 +3253,7 @@ const jsonLd: WithContext<Product> = {
 | `siteName`              | 站点名称                                              |
 | `images`                | 预览图（可多图）；常配宽高与 alt                      |
 | `videos` / `audio`      | 富媒体预览（需绝对 URL）                              |
-| `local`                 | 语言区域，如 en_US                                    |
+| `locale`                | 语言区域，如 en_US                                    |
 | `type`                  | 资源类型，如 website；文章常用 article                |
 
 ```tsx
@@ -3247,15 +3344,15 @@ export async function generateMetadata(
 }
 ```
 
-同一数据请求在 `generateMetadata` 与页面 `Server Component` 之间会被 `memoized`，避免重复打接口（见官方 [generateMetadata](https://nextjs.org/docs/app/api-reference/functions/generate-metadata) 说明）。
+对相同参数发起的 `fetch` 请求会在 `generateMetadata`、`generateStaticParams`、布局、页面和 Server Components 之间自动记忆化，从而避免同一次渲染链路中的重复请求；使用其他数据客户端时不能自动套用这个结论，可用 React `cache` 等方式显式复用。
 
-#### 基于文件的 OG 图（推荐场景）
+#### 基于文件的 OG 图
 
 单独维护「导出里的图片 URL」和「仓库里的真实文件」容易不同步。对 OG 图而言，更省事的做法是使用 **基于文件的 Metadata**，例如在路由段放置 `opengraph-image.png` 或 `opengraph-image.tsx` 动态生成图，由框架生成正确 meta。详见 [opengraph-image](https://nextjs.org/docs/app/api-reference/file-conventions/metadata/opengraph-image)。
 
-#### 基于文件的 OG 图（推荐场景）
+#### Open Graph 元数据的继承与覆盖
 
-子路由若导出了自己的 `openGraph` 对象，会与父级按官方规则做`合并或覆盖`；若子段完全不设置 openGraph，则继续沿用祖先布局的配置。具体嵌套行为以 [][Metadata 字段与继承](https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadata-fields) 为准。
+子路由若导出自己的 `openGraph` 对象，会整体覆盖父级的 `openGraph` 对象；若子段完全不设置 `openGraph`，则继承祖先布局的配置。需要保留父级图片时，应像前面的 `generateMetadata` 示例那样显式合并。具体行为以 [Metadata 字段与继承](https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadata-fields) 为准。
 
 #### 实践建议
 
@@ -3265,13 +3362,13 @@ export async function generateMetadata(
 
 ### Web Vitals
 
-Web Vitals 是 Google 推出的一套以用户为中心的网页性能指标体系，用来衡量真实用户在加载速度、交互响应、页面稳定性三个维度的体验表现，也是 SEO 评估的重要参考项。
+Web Vitals 是 Google 推出的一套以用户为中心的网页体验指标。核心网页指标（Core Web Vitals）包括 LCP、INP 和 CLS，并会作为 Google 页面体验信号的一部分；高分不能替代内容相关性，也不能保证排名。
 
 #### LCP (Largest Contentful Paint，最大内容绘制时间)
 
 LCP 衡量的是视口内最大内容元素（通常是大图、视频封面或大段文本）完成渲染所需的时间，反映“主要内容何时可见”。
 
-- Good：`<= 2.5s`
+- Good：`≤ 2.5s`
 - Needs Improvement：`2.5s ~ 4.0s`
 - Poor：> `4.0s`
 
@@ -3279,7 +3376,7 @@ LCP 衡量的是视口内最大内容元素（通常是大图、视频封面或�
 
 INP 衡量用户交互（点击、输入、键盘操作）到页面下一次可见更新之间的延迟，反映整体交互流畅度。
 
-- Good：`<= 200ms`
+- Good：`≤ 200ms`
 - Needs Improvement：`200ms ~ 500ms`
 - Poor：> `500ms`
 
@@ -3287,7 +3384,7 @@ INP 衡量用户交互（点击、输入、键盘操作）到页面下一次可�
 
 CLS 衡量页面在生命周期内发生的意外布局位移总量，反映视觉稳定性。比如图片未预留尺寸、异步内容插入导致页面“跳动”。
 
-- Good：`<= 0.1`
+- Good：`≤ 0.1`
 - Needs Improvement：`0.1 ~ 0.25`
 - Poor：> `0.25`
 
@@ -3299,6 +3396,8 @@ CLS 衡量页面在生命周期内发生的意外布局位移总量，反映视�
 2. 选择设备（移动端/桌面端）与检测类别（建议勾选 Performance 和 SEO）。
 3. 点击“分析网页加载情况”生成报告。
 4. 在报告中查看 LCP、CLS 等核心指标分数与诊断建议。
+
+这些阈值通常按真实用户访问数据的第 75 百分位评估，并同时关注移动端与桌面端。Lighthouse 是单次实验室测试，不能直接测得真实用户的 INP；生产评估还应结合 Chrome UX Report、PageSpeed Insights 或自己的 RUM 数据。
 
 #### 代码示例
 
@@ -3336,13 +3435,13 @@ export default function HomePage() {
 
 ## ORM (Prisma 7.8.x)
 
-在传统开发模式中，我们需要把数据存储到数据库，所以需要通过SQL语句来进行操作，例如CRUD等操作，但是SQL语句太多了，还比较繁琐，所以就有了ORM框架。ORM框架简单来说就是: 让我们通过熟悉的语法来操作数据库，我们可以`直接使用面向对象的方式来操作数据库`，ORM会把我们的操作映射成SQL语句，然后执行。
+ORM（Object-Relational Mapping，对象关系映射）在应用对象与关系数据库表之间建立映射，让开发者通过类型化 API 完成常见查询和 CRUD。ORM 通常会生成并执行 SQL，但不会消除理解表结构、索引、事务、约束和查询性能的必要性，也不等同于所有操作都采用传统“面向对象”写法。
 
 ### 安装
 
-1. 安装Prisma: `pnpm add prisma -D`
-2. 安装Prisma Client: `pnpm add @prisma/client @prisma/adapter-pg pg dotenv` 具体安装参考[Prisma Postgres](https://www.prisma.io/docs/prisma-orm/quickstart/prisma-postgres)
-3. 初始化Prisma: `pnpm dlx prisma init` 执行完成之后他会自动生成`prisma`文件夹，并且生成`schema.prisma`文件，以及创建一个`env`文件和`prisma.config.ts`文件。
+1. 安装 Prisma CLI：`pnpm add -D prisma dotenv @types/pg`
+2. 安装 Prisma Client、PostgreSQL 驱动适配器和驱动：`pnpm add @prisma/client @prisma/adapter-pg pg argon2 zod`
+3. 初始化 Prisma：`pnpm dlx prisma init`。Prisma 7 项目使用 `prisma/schema.prisma` 描述数据模型，并通过根目录的 `prisma.config.ts` 配置数据库连接和迁移路径。
 4. 打开`prisma/schema.prisma`文件，添加以下内容：
 
 ```prisma
@@ -3359,7 +3458,7 @@ model User {
   id        String   @id @default(cuid()) //主键
   name      String //用户名
   email     String   @unique //邮箱
-  password  String //密码
+  passwordHash String //密码哈希，不保存明文密码
   createdAt DateTime @default(now()) //创建时间
   updatedAt DateTime @updatedAt //更新时间
   posts     Post[] //关联文章
@@ -3372,43 +3471,56 @@ model Post {
   createdAt DateTime @default(now()) //创建时间
   updatedAt DateTime @updatedAt //更新时间
   authorId  String //作者ID
-  author    User     @relation(fields: [authorId], references: [id],onDelete: Cascade,onUpdate: Cascade) //一对多关联
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade, onUpdate: Cascade) //一对多关联
 }
 ```
 
 - `@id`: 主键对应sql语句的`PRIMARY KEY`
-- `@default(cuid())`: 默认生成一个唯一ID 类似于sql语句的`AUTO_INCREMENT`
+- `@default(cuid())`：由 Prisma 生成字符串 ID。它与数据库自增整数都可用于自动生成主键，但格式、排序特性和生成位置并不相同
 - `@unique`: 唯一约束对应sql语句的`UNIQUE`
 - `@relation`: 一对多关联对应sql语句的`FOREIGN KEY`
 - `@relation(fields: [authorId], references: [id],onDelete: Cascade,onUpdate: Cascade)`: 一对多关联对应sql语句的`FOREIGN KEY`
 - `@default(now())`: 默认生成当前时间 类似于sql语句的`CURRENT_TIMESTAMP`
-- `@updatedAt`: 更新时间 类似于sql语句的`UPDATE CURRENT_TIMESTAMP`
+- `@updatedAt`：通过 Prisma ORM 自动写入记录更新时间；它不一定对应数据库原生的 `ON UPDATE CURRENT_TIMESTAMP`
 - `onDelete: Cascade`: 级联删除(表示删除主表的时候，从表也删除)
 - `onUpdate: Cascade`: 级联更新(表示更新主表的时候，从表也更新)
 
-5. 打开`.env`文件，修改数据库连接信息：`DATABASE_URL=“postgresql://username:password@localhost:5432/mydb?schema=public”`
+5. 在项目根目录的 `.env` 中设置连接字符串：`DATABASE_URL="postgresql://username:password@localhost:5432/mydb?schema=public"`。不要提交包含真实凭据的 `.env`。
 
 - `postgresql`: 数据库类型
 - `username`: 用户名
 - `password`: 密码
 - `localhost`: 主机名
 - `5432`: 端口号
-- `demo`: 数据库名
+- `mydb`: 数据库名
 - `schema=public`: 模式
 
-6. 执行数据库迁移命令:
+同时在 `prisma.config.ts` 中让 Prisma CLI 读取该连接字符串：
+
+```ts
+// prisma.config.ts
+import "dotenv/config";
+import { defineConfig, env } from "prisma/config";
+
+export default defineConfig({
+  schema: "prisma/schema.prisma",
+  migrations: { path: "prisma/migrations" },
+  datasource: { url: env("DATABASE_URL") },
+});
+```
+
+6. 在开发环境创建并执行数据库迁移：
 
 ```sh
 pnpm dlx prisma migrate dev --name init
 ```
 
-执行完成之后他会在`prisma/migrations`文件夹中生成一个`migration`文件，并且生成一个`sql`文件，然后`自动执行`sql文件，创建表结构。
+该命令会在 `prisma/migrations` 下生成迁移目录和 SQL，并应用到开发数据库。生产环境应审查并提交迁移文件，再使用 `prisma migrate deploy`，不要在生产数据库上运行 `migrate dev`。
 
 7. 执行生成客户端代码命令：
 
 ```sh
-# 生成路径是 schema.prisma 文件中client output的目录
-npx prisma generate
+# 生成路径由 schema.prisma 中 generator.output 决定
 pnpm dlx prisma generate
 ```
 
@@ -3416,79 +3528,202 @@ pnpm dlx prisma generate
 
 ```ts
 // src/lib/prisma.ts
-import { PrismaClient } from "../generated/prisma/client"; // 引入生成客户端代码
-import { PrismaPg } from "@prisma/adapter-pg"; // 引入适配器
-const pool = new PrismaPg({ connectionString: process.env.DATABASE_URL }); // 创建连接池
-const prisma = new PrismaClient({ adapter: pool }); // 创建客户端
-export default prisma; // 导出客户端
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+
+const globalForPrisma = globalThis as unknown as {
+  prisma?: PrismaClient;
+};
+
+function createPrismaClient() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("缺少 DATABASE_URL 环境变量");
+  }
+
+  const adapter = new PrismaPg({ connectionString });
+  return new PrismaClient({ adapter });
+}
+
+const prisma = globalForPrisma.prisma ?? createPrismaClient();
+
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
+}
+
+export default prisma;
 ```
 
-```ts
-// src/app/api/route.ts
-import prisma from "@/lib/prisma";
-import { NextRequest, NextResponse } from "next/server"; // 引入NextRequest NextResponse
+开发模式热更新可能重复执行模块。把客户端缓存在 `globalThis` 上，可以避免每次热更新都创建新的连接池；生产进程仍只创建当前模块实例。
 
-export async function GET(request: NextRequest) {
-  const users = await prisma.user.findMany(); // 查询所有用户
-  return NextResponse.json(users); // 返回用户列表
+```ts
+// src/app/api/users/route.ts
+import argon2 from "argon2";
+import { z } from "zod";
+import prisma from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+export const runtime = "nodejs";
+
+const publicUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  createdAt: true,
+  updatedAt: true,
+} satisfies Prisma.UserSelect;
+
+const createUserSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  email: z.email(),
+  password: z.string().min(12).max(128),
+});
+
+const updateUserSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().trim().min(1).max(100).optional(),
+    email: z.email().optional(),
+    password: z.string().min(12).max(128).optional(),
+  })
+  .refine(
+    ({ name, email, password }) =>
+      name !== undefined || email !== undefined || password !== undefined,
+    { message: "至少提供一个需要更新的字段" },
+  );
+
+const deleteUserSchema = z.object({ id: z.string().min(1) });
+
+async function readJson(request: NextRequest): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return null;
+  }
+}
+
+function handleDatabaseError(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002") {
+      return NextResponse.json({ message: "邮箱已存在" }, { status: 409 });
+    }
+    if (error.code === "P2025") {
+      return NextResponse.json({ message: "用户不存在" }, { status: 404 });
+    }
+  }
+
+  console.error(error);
+  return NextResponse.json({ message: "服务器内部错误" }, { status: 500 });
+}
+
+export async function GET() {
+  const users = await prisma.user.findMany({ select: publicUserSelect });
+  return NextResponse.json(users);
 }
 
 export async function POST(request: NextRequest) {
-  const { name, email, password } = await request.json(); // 获取请求体
-  const user = await prisma.user.create({
-    data: { name, email, password }, // 创建用户
-  });
-  return NextResponse.json(user); // 返回创建的用户
+  const parsed = createUserSchema.safeParse(await readJson(request));
+  if (!parsed.success) {
+    return NextResponse.json(
+      { message: "请求数据不合法", errors: z.flattenError(parsed.error) },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const { password, ...profile } = parsed.data;
+    const user = await prisma.user.create({
+      data: {
+        ...profile,
+        passwordHash: await argon2.hash(password),
+      },
+      select: publicUserSelect,
+    });
+    return NextResponse.json(user, { status: 201 });
+  } catch (error) {
+    return handleDatabaseError(error);
+  }
 }
 
 export async function PATCH(request: NextRequest) {
-  const { id, name, email, password } = await request.json(); // 获取请求体
-  const user = await prisma.user.update({
-    where: { id },
-    data: { name, email, password }, // 更新用户
-  });
-  return NextResponse.json(user); // 返回更新后的用户
+  const parsed = updateUserSchema.safeParse(await readJson(request));
+  if (!parsed.success) {
+    return NextResponse.json(
+      { message: "请求数据不合法", errors: z.flattenError(parsed.error) },
+      { status: 400 },
+    );
+  }
+
+  const { id, name, email, password } = parsed.data;
+  const data: Prisma.UserUpdateInput = {};
+  if (name !== undefined) data.name = name;
+  if (email !== undefined) data.email = email;
+  if (password !== undefined) data.passwordHash = await argon2.hash(password);
+
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data,
+      select: publicUserSelect,
+    });
+    return NextResponse.json(user);
+  } catch (error) {
+    return handleDatabaseError(error);
+  }
 }
 
 export async function DELETE(request: NextRequest) {
-  const { id } = await request.json(); // 获取请求体
-  const user = await prisma.user.delete({
-    where: { id }, // 删除用户
-  });
-  return NextResponse.json(user); // 返回删除后的用户
+  const parsed = deleteUserSchema.safeParse(await readJson(request));
+  if (!parsed.success) {
+    return NextResponse.json({ message: "请求数据不合法" }, { status: 400 });
+  }
+
+  try {
+    const user = await prisma.user.delete({
+      where: { id: parsed.data.id },
+      select: publicUserSelect,
+    });
+    return NextResponse.json(user);
+  } catch (error) {
+    return handleDatabaseError(error);
+  }
 }
 ```
 
+该示例只演示数据校验、密码哈希和 Prisma CRUD。真实接口还必须根据业务加入认证、对象级授权、限流、审计日志，以及使用 Cookie 身份认证时的 CSRF 防护。不要向客户端返回密码或密码哈希。
+
 创建`index.http`文件, 使用`REST Client`测试接口
 
-```sh
+```http
 ### 创建用户
-POST http://localhost:8888/api
+POST http://localhost:8888/api/users
 Content-Type: application/json
 
 {
     "name": "test",
     "email": "1test@test.com",
-    "password": "123456"
+    "password": "a-strong-passphrase"
 }
 
 ### 查询所有用户
-GET http://localhost:8888/api
+GET http://localhost:8888/api/users
 
 
 ### 更新用户
-PATCH http://localhost:8888/api
+PATCH http://localhost:8888/api/users
 Content-Type: application/json
 
 {
     "id": "cmkyoxflr00004ck82ywc6joi",
     "name": "xiaoman",
-    "email": "xiaomansdasdas",
-    "password": "dasdasda"
+    "email": "xiaoman@example.com",
+    "password": "another-strong-passphrase"
 }
 
 ### 删除用户
-DELETE http://localhost:8888/api
+DELETE http://localhost:8888/api/users
 Content-Type: application/json
 
 {

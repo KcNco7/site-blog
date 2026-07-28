@@ -1,15 +1,16 @@
 # package.json 与前端工程化工具说明
 
-这份文档基于当前仓库的真实配置，说明下面几件事：
+这篇文章以原资料中的 Vue + TypeScript 示例项目为背景，说明下面几件事：
 
 1. `package.json` 里的关键字段和脚本是做什么的
-2. `ESLint`、`Prettier`、`Oxlint`、`vue-tsc` 分别负责什么
-3. 它们在当前项目里是怎么协同工作的
-4. 新建一个 Vue + TypeScript 项目时，应该如何接入这套工具链
+2. `scripts` 如何组织开发、构建、检查和格式化命令
+3. 不同依赖字段应该如何区分
 
-## 1. 先看当前项目的配置结构
+该示例项目并不是当前知识库仓库。ESLint、Prettier、Oxlint、`vue-tsc` 的分工以及新项目的接入流程，将在后续章节中介绍。
 
-这个项目和代码质量、格式化直接相关的文件主要有这些：
+## 1. 先看原资料示例项目的配置结构
+
+原资料中的示例项目包含以下与代码质量、格式化直接相关的文件：
 
 - `package.json`：定义项目元信息、依赖、脚本命令
 - `eslint.config.ts`：ESLint 规则配置
@@ -29,30 +30,30 @@
 
 ## 2. package.json 里每个关键字段的作用
 
-当前项目的 `package.json` 可以分成几部分看。
+原资料示例项目的 `package.json` 可以分成几部分看。
 
 ### 2.1 项目基础信息
 
 - `name`
-  项目名称。发包时会用到，当前项目是私有项目，主要是标识用途。
+  项目名称。发包时会用到；在这个私有示例项目中，它主要用于标识项目。
 
 - `version`
-  版本号。当前是 `0.0.0`，说明它不是一个要发布到 npm 的正式包。
+  版本号。示例项目使用 `0.0.0`；这是一个合法的 SemVer 版本，但不能单凭该值判断项目是否准备发布。还应结合 `private` 字段和实际发布流程判断。
 
 - `private`
-  设置为 `true` 后，npm/pnpm 不会把它当成可发布包误发出去。前端应用项目通常都建议开这个。
+  示例项目设置了 `true`，用于阻止 npm 发布该包，避免私有应用被误发。当前知识库仓库没有这个字段，不能把示例项目的设置视为知识库的真实配置。
 
 - `type`
-  当前是 `module`，表示 Node 环境下优先按 ES Module 方式解析。这会影响配置文件和脚本的写法，所以 Prettier 配置用了 `prettier.config.mjs`。
+  示例项目设置为 `module`，因此在最近的 `package.json` 包边界内，Node.js 会把 `.js` 文件按 ES Module 解释；`.mjs` 文件无论是否设置该字段，始终按 ES Module 解释。示例中的 `prettier.config.mjs` 不应简单归因于 `type` 字段。
 
 - `engines`
-  约束 Node 版本。当前项目要求 `^20.19.0 || >=22.12.0`，主要是为了避免团队成员用过旧的 Node 导致工具链行为不一致。
+  约束 Node 版本。原资料示例项目要求 `^20.19.0 || >=22.12.0`，主要是为了避免团队成员使用过旧的 Node 导致工具链行为不一致；当前知识库仓库没有声明 `engines`。
 
 ### 2.2 scripts 的作用
 
 `scripts` 是整个工程化流程的入口。平时你运行的 `pnpm lint`、`pnpm format` 本质上都是这里定义的命令别名。
 
-当前项目的脚本如下：
+原资料示例项目当时的脚本快照如下：
 
 ```json
 {
@@ -104,7 +105,7 @@
 #### lint 相关
 
 - `lint`
-  当前项目最核心的质量检查命令，执行顺序是：
+  该示例项目的综合质量检查命令，执行顺序是：
   `oxlint .` -> `eslint . --cache` -> `vue-tsc --build`
 
 - `lint:fix`
@@ -134,22 +135,173 @@
 ### 2.3 dependencies 和 devDependencies 的区别
 
 - `dependencies`
-  运行时依赖。也就是项目真正上线后还需要的包，比如 `vue`、`vue-router`、`pinia`、`element-plus`。
+  包或应用正常工作时直接需要，并且需要随交付物一起提供或在运行环境中可用的依赖；具体安装方式取决于项目的交付模式。
 
 - `devDependencies`
-  开发时依赖。只在本地开发、构建、检查、格式化时用到，比如 `eslint`、`prettier`、`oxlint`、`typescript`、`vite`。
+  用于开发、测试、文档、构建和检查，但不需要交付给包的使用者或生产运行环境的工具。静态应用是否在生产环境安装这些依赖，还要结合构建与部署方式判断。
 
-这个项目里和本文最相关的开发依赖有：
+原资料示例项目中和本文最相关的开发依赖有：
 
 - `eslint`：主 lint 工具
 - `eslint-plugin-vue`：让 ESLint 理解 Vue 单文件组件
 - `@vue/eslint-config-typescript`：Vue + TS 的官方 ESLint 规则组合
 - `eslint-config-prettier`：关闭和 Prettier 冲突的 ESLint 格式规则
 - `oxlint`：高性能 lint 工具
-- `eslint-plugin-oxlint`：把部分 Oxlint 规则接入 ESLint 配置体系
+- `eslint-plugin-oxlint`：关闭已由 Oxlint 覆盖的 ESLint 规则，减少重复诊断
 - `prettier`：代码格式化工具
 - `typescript`：TypeScript 编译器
 - `vue-tsc`：Vue 项目的类型检查工具
+
+## 阅读配置说明前先核对真实仓库
+
+文中的脚本清单描述的是原资料对应的 Vue + TypeScript 工程。把这类说明用于另一个仓库前，应先打开目标仓库自己的 `package.json` 和配置文件，确认字段、依赖和脚本确实存在。
+
+先查看目标仓库的 `packageManager` 字段和锁文件，确认实际使用的包管理器。npm 项目可以检查：
+
+```shell
+node --version
+node -p "require('./package.json').packageManager"
+npm --version
+npm pkg get name version private type packageManager engines scripts
+```
+
+如果仓库使用 `pnpm-lock.yaml` 或明确声明 pnpm，再使用：
+
+```shell
+pnpm --version
+pnpm pkg get name version private type packageManager engines scripts
+```
+
+文档前半部分描述的是原资料中的示例项目，不能自动代表任何复制、拆分或迁移后的知识库仓库。
+
+## `package.json` 是严格 JSON
+
+`package.json` 使用 JSON 格式，不能直接写 JavaScript 注释、尾随逗号、函数或 `undefined`。字段可以被不同工具读取，但每个工具只解释自己认识的部分。
+
+```json
+{
+  "name": "example-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=22"
+  }
+}
+```
+
+这个版本号只用于展示字段格式。实际项目应填写团队验证过的精确包管理器版本和符合工具链要求的 Node.js 范围。
+
+## 几个容易混淆的字段
+
+| 字段 | 准确作用 |
+|------|----------|
+| `version` | 描述当前包版本；是否发布不能只由版本号判断 |
+| `private` | 设为 `true` 时阻止包管理器发布该包，适合应用和工作区根项目 |
+| `type` | 告诉 Node.js 如何解释最近包边界内的 `.js` 文件 |
+| `engines` | 声明期望的 Node.js、包管理器等版本范围 |
+| `packageManager` | 记录项目期望使用的包管理器及精确版本 |
+| `main` | 没有 `exports` 时，Node.js 包的传统主入口 |
+| `exports` | 声明包对外开放的入口，并封装未公开的内部路径 |
+| `types` | 发布 TypeScript 类型声明时指定声明入口 |
+
+`engines` 是否仅产生警告或直接阻止安装，取决于使用的包管理器和严格模式配置。因此它既不能替代 CI 版本检查，也不能保证每个人自动切换到正确 Node.js 版本。
+
+## `type` 只控制模块解释方式
+
+在最近的父级 `package.json` 中设置 `"type": "module"` 后，Node.js 会把该包边界内的 `.js` 文件按 ES Module 解释。`.mjs` 始终按 ES Module 处理，`.cjs` 始终按 CommonJS 处理。
+
+`type` 字段不会完成这些工作：
+
+- 不会把 TypeScript 自动编译成 JavaScript。
+- 不会改变浏览器中普通 `<script>` 的类型。
+- 不会自动给相对 ESM 导入补文件扩展名。
+- 不会保证所有第三方工具都采用同一种模块加载规则。
+
+配置文件使用 `.mjs` 可以显式表明它是 ES Module，即使上层没有 `"type": "module"` 也成立；因此不能简单把 `.mjs` 的使用归因于该字段。
+
+## SemVer 范围与锁定结果
+
+语义化版本通常写成 `主版本.次版本.修订版本`：
+
+- 修订版本用于兼容的错误修复。
+- 次版本用于向后兼容的新功能。
+- 主版本用于可能不兼容的变化。
+
+常见依赖范围：
+
+| 写法 | 含义 |
+|------|------|
+| `1.2.3` | 只接受这个精确版本 |
+| `~1.2.3` | 通常允许同一主、次版本下的修订更新 |
+| `^1.2.3` | 通常允许不改变最左侧非零版本号的兼容更新 |
+| `>=1.2.3 <2` | 使用显式比较范围 |
+
+范围表达“重新解析时允许选择什么”，锁文件记录“本次安装最终选中了什么”。发布者是否真正遵守 SemVer 仍需要项目通过测试验证。
+
+### `workspace:` 协议不是 SemVer 范围
+
+`workspace:*` 不是 SemVer 运算符，而是 pnpm、Yarn 等包管理器支持的工作区协议。它要求依赖从当前工作区解析，具体写回和发布行为取决于包管理器及其配置；只有采用支持该协议的工作区时才能使用。
+
+## 依赖分类取决于交付方式
+
+| 字段 | 适合放置 |
+|------|----------|
+| `dependencies` | 包或应用正常工作所直接需要的依赖 |
+| `devDependencies` | 开发、测试、检查、文档和构建工具 |
+| `peerDependencies` | 要求使用方提供并共享的宿主依赖，常见于插件和组件库 |
+| `optionalDependencies` | 安装失败时允许继续、代码能够降级处理的可选能力 |
+
+对于静态前端应用，生产服务器可能只部署构建产物，不安装任何 Node 依赖，但源码构建仍需要 `vue` 等正常依赖。对于发布到注册表的库，错误地把运行依赖放入 `devDependencies`，会导致使用者安装后缺包；把应共享的框架放入普通依赖，又可能造成重复实例。
+
+依赖分类应根据“谁消费这个包、在什么阶段安装、最终交付什么”来判断，而不是只看本机开发时是否使用。
+
+## 清单文件与锁文件各自负责什么
+
+- `package.json` 描述项目直接依赖及允许范围，是开发者维护的意图。
+- `pnpm-lock.yaml`、`package-lock.json` 等锁文件记录解析后的完整依赖图和完整性信息。
+- `node_modules` 是安装结果，可以重新生成，通常不提交到应用仓库。
+
+同一项目应统一包管理器并提交对应锁文件。CI 使用冻结锁文件安装，可以在清单与锁文件不一致时尽早失败，避免开发机与流水线解析出不同依赖。
+
+## scripts 的执行环境
+
+包管理器运行脚本时，会把项目依赖提供的可执行文件加入临时 `PATH`，所以脚本中可以直接写 `vite`、`eslint`、`vue-tsc`，不必写 `node_modules/.bin/...`。
+
+```json
+{
+  "scripts": {
+    "type-check": "vue-tsc --build",
+    "lint": "oxlint . && eslint . --cache",
+    "check": "pnpm run type-check && pnpm run lint",
+    "test": "vitest run"
+  }
+}
+```
+
+脚本设计应注意：
+
+- `&&` 表示前一条成功后才执行下一条，适合有依赖关系的串行检查。
+- 并行工具能缩短时间，但不能假定彼此有先后顺序；多个任务同时写同一目录可能互相干扰。
+- `run-p` 不是 Node.js 内置命令，只有项目安装了提供它的依赖后才能使用。
+- 脚本应以非零退出码表示失败，CI 才能正确阻止后续步骤。
+- Shell 语法在 Windows、Linux、macOS 之间存在差异，复杂逻辑更适合写成跨平台 Node.js 脚本。
+- `pre<script>`、`post<script>` 等生命周期脚本可能被隐式执行，新增依赖或发布包时要考虑脚本安全。
+
+格式化并行构建不是越多越好。类型检查和打包可以并行，是因为它们通常只读源码并写入不同位置；若两者共享增量缓存或输出目录，则应先确认工具支持并发。
+
+## 应用项目与发布库关注的字段不同
+
+私有前端应用主要关注脚本、依赖、Node.js 版本、包管理器版本和构建配置。准备发布的库还需要认真设计：
+
+- `name`、`version`、`license`、`files`
+- `exports`、`main`、`types`
+- ESM 与 CommonJS 的兼容策略
+- `peerDependencies`
+- 发布产物是否包含源码映射、类型声明和必要资源
+
+不要把一个应用项目的 `package.json` 原样复制成库配置，也不要仅为了“字段齐全”添加没有实际消费者的入口。
 
 ## 3. ESLint、Prettier、Oxlint、vue-tsc 各自负责什么
 
@@ -171,19 +323,20 @@ ESLint 是最灵活的 lint 工具。它的特点是：
 - 可以做项目定制规则
 - 可以设置 `off`、`warn`、`error` 三种严重级别
 
-当前项目的 ESLint 配置文件是 `eslint.config.ts`，使用的是 Flat Config 写法。
+原资料示例项目的 ESLint 配置文件是 `eslint.config.ts`，使用的是 Flat Config 写法。
 
-当前项目里，ESLint 主要做了这些事：
+该示例项目里，ESLint 主要做了这些事：
 
 1. 指定要检查哪些文件
 2. 忽略构建产物目录
 3. 启用 Vue 官方基础规则
 4. 启用 Vue + TypeScript 推荐规则
-5. 读取 `.oxlintrc.json` 里的部分规则
-6. 增加项目自己的自定义规则
-7. 关闭和 Prettier 冲突的格式化类规则
+5. 增加项目自己的自定义规则
+6. 关闭和 Prettier 冲突的格式化类规则
 
-当前项目里比较典型的 ESLint 规则有：
+`.oxlintrc.json` 由 Oxlint 读取。ESLint 只读取自己的 Flat Config，以及该配置显式导入的插件和共享配置。
+
+该示例项目里比较典型的 ESLint 规则有：
 
 - `@typescript-eslint/no-unused-vars`
 - `vue/block-order`
@@ -196,7 +349,7 @@ ESLint 是最灵活的 lint 工具。它的特点是：
 
 Oxlint 是 OXC 工具链里的 lint 工具，特点是快。它适合做第一层高速扫描。
 
-当前项目的 Oxlint 配置文件是 `.oxlintrc.json`。它主要配置了：
+原资料示例项目的 Oxlint 配置文件是 `.oxlintrc.json`。它主要配置了：
 
 - `plugins`
   决定启用哪些规则来源，比如 `eslint`、`typescript`、`vue`
@@ -213,7 +366,7 @@ Oxlint 是 OXC 工具链里的 lint 工具，特点是快。它适合做第一�
 - `options`
   配置一些全局行为，比如未使用的 `eslint-disable` 注释是否报错
 
-当前项目更适合交给 Oxlint 的规则有：
+该示例项目更适合交给 Oxlint 的规则有：
 
 - `eqeqeq`
 - `no-console`
@@ -222,11 +375,13 @@ Oxlint 是 OXC 工具链里的 lint 工具，特点是快。它适合做第一�
 
 这类规则通常通用、简单、适合高性能扫描。
 
+Oxlint 对 `.vue`、`.svelte`、`.astro` 文件的支持只覆盖 `<script>` 代码块，不负责检查 Vue 模板。模板规则仍需要 `eslint-plugin-vue` 等兼容工具。
+
 ### 3.3 Prettier 是什么
 
 Prettier 不负责判断业务逻辑对不对，它只负责一件事：统一代码排版。
 
-当前项目的 Prettier 配置文件是 `prettier.config.mjs`，主要选项有：
+原资料示例项目的 Prettier 配置文件是 `prettier.config.mjs`，主要选项有：
 
 - `semi: false`
   不加分号
@@ -235,13 +390,13 @@ Prettier 不负责判断业务逻辑对不对，它只负责一件事：统一�
   优先使用单引号
 
 - `printWidth: 100`
-  建议单行宽度不超过 100
+  表示 Prettier 期望采用的大致换行宽度，不是严格的单行长度上限；格式化结果可能短于或长于这个值
 
 - `bracketSpacing: true`
   对象字面量花括号内保留空格
 
 - `htmlWhitespaceSensitivity: 'ignore'`
-  HTML 空白处理尽量宽松
+  把标签周围的空白视为不重要；当内容语义或布局依赖这些空白时，这个设置可能不合适
 
 - `endOfLine: 'lf'`
   统一用 LF 换行
@@ -266,13 +421,13 @@ Prettier 不负责判断业务逻辑对不对，它只负责一件事：统一�
 - 接口字段缺失
 - `ref`、`computed`、函数返回值类型错误
 
-所以在这个项目里，`lint` 脚本不是只跑 ESLint，而是把 `vue-tsc` 也接进来了。
+所以在该示例项目里，`lint` 脚本不是只跑 ESLint，而是把 `vue-tsc` 也接进来了。
 
 ## 4. 它们是怎么工作的
 
-### 4.1 当前项目的执行顺序
+### 4.1 示例项目的执行顺序
 
-日常检查时，当前项目推荐执行：
+日常检查时，该示例项目推荐执行：
 
 ```bash
 pnpm lint
@@ -306,12 +461,12 @@ pnpm format
 - ESLint 关心“代码写得合不合理”
 - Prettier 关心“代码排版是否统一”
 
-如果把格式化和质量检查混成一件事，定位问题会更乱。当前项目把它们拆开，是更清晰的做法：
+如果把格式化和质量检查混成一件事，定位问题会更乱。该示例项目把它们拆开，是更清晰的做法：
 
 - `lint` 负责质量和类型
 - `format` 负责排版
 
-### 4.3 ESLint 和 Prettier 为什么不会打架
+### 4.3 ESLint 和 Prettier 如何减少冲突
 
 原因在 `eslint.config.ts` 最后接入了：
 
@@ -319,10 +474,12 @@ pnpm format
 import skipFormatting from 'eslint-config-prettier/flat'
 ```
 
-它的作用是关闭那些会和 Prettier 冲突的 ESLint 格式规则。这样职责就非常清楚：
+它会关闭已知会和 Prettier 冲突的 ESLint 格式规则，让两者的职责更清楚：
 
 - 格式问题交给 Prettier
 - 非格式问题交给 ESLint
+
+这不能保证所有配置永远没有冲突。项目自定义规则或其他插件新增的格式规则仍需核对；`eslint-config-prettier` 也不会替代 Prettier 执行格式化。
 
 这一步很关键。如果没有它，常见情况是：
 
@@ -337,12 +494,14 @@ import skipFormatting from 'eslint-config-prettier/flat'
 - Oxlint 更快，适合做第一层通用扫描
 - ESLint 更灵活，生态更完整，适合做深度规则和框架规则
 
-当前项目的设计思路是：
+该示例项目的设计思路是：
 
 1. 用 Oxlint 先拦一批高性价比问题
 2. 再用 ESLint 补上 Vue、TypeScript 和项目级规则
 
 这是一种很实用的组合，不是为了“堆工具”，而是为了兼顾速度和可定制性。
+
+同时运行 Oxlint 与 ESLint 时，可以安装 `eslint-plugin-oxlint`，并按照所用版本的说明在 Flat Config 中接入其推荐配置，关闭已由 Oxlint 覆盖的 ESLint 规则，减少重复诊断。它用于处理规则重叠，不会让 ESLint 读取 `.oxlintrc.json`。
 
 ## 5. 这些配置文件分别由谁读取
 
@@ -378,7 +537,7 @@ import skipFormatting from 'eslint-config-prettier/flat'
 最小可用的一组开发依赖通常是：
 
 ```bash
-pnpm add -D eslint prettier oxlint typescript vue-tsc eslint-config-prettier
+pnpm add -D eslint prettier oxlint typescript vue-tsc eslint-config-prettier eslint-plugin-oxlint
 ```
 
 如果是 Vue + TypeScript 项目，还要再补上：
@@ -391,7 +550,7 @@ pnpm add -D eslint-plugin-vue @vue/eslint-config-typescript
 
 至少建议准备这些文件：
 
-1. `eslint.config.ts`
+1. `eslint.config.mjs`
 2. `.oxlintrc.json`
 3. `prettier.config.mjs`
 4. `.prettierignore`
@@ -400,14 +559,18 @@ pnpm add -D eslint-plugin-vue @vue/eslint-config-typescript
 
 一个最小化示例可以是下面这样。
 
-#### `eslint.config.ts`
+#### `eslint.config.mjs`
 
-```ts
+```js
 import { defineConfigWithVueTs, vueTsConfigs } from '@vue/eslint-config-typescript'
 import pluginVue from 'eslint-plugin-vue'
+import oxlint from 'eslint-plugin-oxlint'
 import skipFormatting from 'eslint-config-prettier/flat'
 
 export default defineConfigWithVueTs(
+  {
+    ignores: ['dist/**', 'coverage/**'],
+  },
   {
     files: ['**/*.{vue,ts,tsx,js,jsx}'],
   },
@@ -418,16 +581,19 @@ export default defineConfigWithVueTs(
       'vue/no-empty-component-block': 'error',
     },
   },
+  ...oxlint.configs['flat/recommended'],
   skipFormatting,
 )
 ```
+
+`eslint-plugin-oxlint` 的推荐配置应放在其他规则配置之后，用来关闭已由 Oxlint 覆盖的 ESLint 规则；这里再让 `eslint-config-prettier` 最后关闭格式冲突规则。
 
 #### `.oxlintrc.json`
 
 ```json
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["eslint", "typescript", "vue"],
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "vue"],
   "ignorePatterns": ["dist", "node_modules"],
   "rules": {
     "eqeqeq": "error",
@@ -436,6 +602,8 @@ export default defineConfigWithVueTs(
   }
 }
 ```
+
+设置 `plugins` 会覆盖 Oxlint 的默认插件集合，因此示例在启用 `vue` 的同时显式保留默认的 `eslint`、`typescript`、`unicorn` 和 `oxc`。
 
 #### `prettier.config.mjs`
 
@@ -448,6 +616,14 @@ export default {
   tabWidth: 2,
   endOfLine: 'lf',
 }
+```
+
+#### `.prettierignore`
+
+```text
+dist/
+coverage/
+node_modules/
 ```
 
 #### `.editorconfig`
@@ -463,6 +639,8 @@ insert_final_newline = true
 trim_trailing_whitespace = true
 end_of_line = lf
 ```
+
+Prettier 会读取它支持的部分 EditorConfig 选项；如果 Prettier 配置文件显式设置了同一项，则以 Prettier 配置为准。两处的缩进和换行设置应保持一致，避免编辑器与命令行结果不同。
 
 ### 第四步：在 package.json 里定义脚本
 
@@ -534,7 +712,10 @@ pnpm format:check
 ### 遇到问题时怎么定位
 
 - `format` 报错
-  先看是不是纯格式问题，比如引号、缩进、换行
+  `format` 使用 `--write`，普通格式差异会被直接改写；如果命令失败，应检查语法解析、配置文件或文件访问问题
+
+- `format:check` 报错
+  它只报告不符合 Prettier 格式的文件，不会修改文件
 
 - `eslint` 报错
   看是不是规则约束、Vue 结构、未使用变量
@@ -545,9 +726,9 @@ pnpm format:check
 - `vue-tsc` 报错
   看是不是类型定义、函数参数、接口结构不匹配
 
-## 8. 当前项目的协同方式总结
+## 8. 示例工具链的协同方式总结
 
-当前仓库的这套配置，本质上是在做职责拆分：
+本文示例工具链本质上是在做职责拆分：
 
 - `package.json`
   负责把所有工具通过脚本串起来

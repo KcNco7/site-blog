@@ -139,6 +139,11 @@ pnpm add @nestjs/swagger
 
 ```ts
 // main.ts
+import { NestFactory } from "@nestjs/core";
+import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { AppModule } from "./app.module";
+
+const app = await NestFactory.create(AppModule);
 const config = new DocumentBuilder()
   .setTitle("Cats example") // 文档标题
   .setDescription("The cats API description") // 文档描述
@@ -153,7 +158,7 @@ SwaggerModule.setup("api", app, documentFactory);
 
 可以添加不同的装饰器来描述对应的接口, 也可以配置自动添加文档:
 
-```json
+```jsonc
 // nest-cli.json
 {
   "$schema": "https://json.schemastore.org/nest-cli",
@@ -168,13 +173,13 @@ SwaggerModule.setup("api", app, documentFactory);
 
 如果发现在使用`PartialType`时在swagger中无法显示, 将`PartialType`的导入改为`@nestjs/swagger`
 
-生成可以导入的json文件
+如需让其他工具导入 OpenAPI 文档，可以额外暴露 JSON 文档路由；这不会在磁盘上生成 JSON 文件：
 
 ```ts
 // main.ts
 const documentFactory = () => SwaggerModule.createDocument(app, config);
 SwaggerModule.setup("api", app, documentFactory, {
-  jsonDocumentUrl: "swagger/json", // 生成可供导入的swagger json文件
+  jsonDocumentUrl: "swagger/json", // 暴露可供导入的 OpenAPI JSON 路由
 });
 ```
 

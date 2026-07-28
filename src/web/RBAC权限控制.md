@@ -1,60 +1,89 @@
-# Vue3+TS实现RBAC权限控制示例
+# RBAC 权限控制
 
-## 核心结构
+RBAC（Role-Based Access Control）把权限分配给角色，再把角色分配给用户。前端可以据此隐藏菜单、按钮并阻止无意义的页面导航，但这些措施只能改善界面体验，不能构成安全边界。每个受保护的后端接口仍必须根据可信身份独立执行授权检查。
 
-### 1. 类型定义 `types/rbac.ts`
+## 类型定义
+
+将权限写成联合类型可以在编译期发现拼写错误；权限项很多时，也可以从常量或接口 schema 推导类型。
 
 ```ts
-export type Permission = string; // e.g. 'user:read', 'order:delete'
+// types/rbac.ts
+export type Permission =
+  | "user:read"
+  | "user:write"
+  | "order:read"
+  | "order:delete";
+
+export type RoleName = "admin" | "editor" | "guest";
 
 export interface Role {
-  name: string;
+  name: RoleName;
   permissions: Permission[];
 }
 
 export interface UserInfo {
-  id: number;
-  roles: string[];
+  id: string;
+  roles: RoleName[];
 }
 ```
 
----
+## Pinia 权限 Store
 
-### 2. 权限 Store `stores/auth.ts`（Pinia）
+下面的 `roleMap` 用于演示角色与权限的关系。生产系统通常由后端保存权威映射，并向前端返回当前用户的角色和已解析权限；客户端不能通过自行修改映射获得真实接口权限。
 
 ```ts
+// stores/auth.ts
 import { defineStore } from "pinia";
-import type { Permission, Role, UserInfo } from "@/types/rbac";
+import type {
+  Permission,
+  Role,
+  RoleName,
+  UserInfo,
+} from "@/types/rbac";
 
-const roleMap: Record<string, Role> = {
+const roleMap: Record<RoleName, Role> = {
   admin: {
     name: "admin",
-    permissions: ["user:read", "user:write", "order:delete"],
+    permissions: ["user:read", "user:write", "order:read", "order:delete"],
   },
-  editor: { name: "editor", permissions: ["user:read", "order:read"] },
-  guest: { name: "guest", permissions: ["order:read"] },
+  editor: {
+    name: "editor",
+    permissions: ["user:read", "order:read"],
+  },
+  guest: {
+    name: "guest",
+    permissions: ["order:read"],
+  },
 };
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     user: null as UserInfo | null,
   }),
+
   getters: {
-    permissions(): Permission[] {
-      if (!this.user) return [];
-      return this.user.roles.flatMap((r) => roleMap[r]?.permissions ?? []);
+    permissions(state): Permission[] {
+      if (!state.user) return [];
+
+      return [
+        ...new Set(
+          state.user.roles.flatMap(
+            (role) => roleMap[role]?.permissions ?? [],
+          ),
+        ),
+      ];
     },
-    hasPermission:
-      (state) =>
-      (perm: Permission): boolean => {
-        const store = useAuthStore();
-        return store.permissions.includes(perm);
-      },
+
+    hasPermission(): (permission: Permission) => boolean {
+      return (permission) => this.permissions.includes(permission);
+    },
+
     hasRole:
       (state) =>
-      (role: string): boolean =>
+      (role: RoleName): boolean =>
         state.user?.roles.includes(role) ?? false,
   },
+
   actions: {
     setUser(user: UserInfo) {
       this.user = user;
@@ -66,615 +95,602 @@ export const useAuthStore = defineStore("auth", {
 });
 ```
 
----
+返回函数的 Pinia getter 可以接收参数，但这类带参数的结果本身不会像普通 getter 那样缓存。这里的权限集合很小；数据较大时可以预先构造 `Set`，或让后端直接返回去重后的权限数组。
 
-### 3. 路由守卫 `router/index.ts`
+## 路由元信息与守卫
+
+先为 `RouteMeta` 补充类型：
+
+```ts
+// types/router.d.ts
+import "vue-router";
+import type { Permission, RoleName } from "./rbac";
+
+declare module "vue-router" {
+  interface RouteMeta {
+    requiresAuth?: boolean;
+    roles?: RoleName[];
+    permissions?: Permission[];
+  }
+}
+
+export {};
+```
+
+路由守卫运行前，应先完成会话恢复或获取当前用户信息。下面假设这一步已在应用启动阶段完成：
 
 ```ts
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 
 const routes = [
-  { path: "/", component: Home },
-  { path: "/admin", component: Admin, meta: { roles: ["admin"] } },
-  { path: "/orders", component: Orders, meta: { permissions: ["order:read"] } },
-  { path: "/403", component: Forbidden },
+  {
+    path: "/",
+    name: "home",
+    component: () => import("@/views/Home.vue"),
+  },
+  {
+    path: "/admin",
+    name: "admin",
+    component: () => import("@/views/Admin.vue"),
+    meta: { requiresAuth: true, roles: ["admin"] },
+  },
+  {
+    path: "/orders",
+    name: "orders",
+    component: () => import("@/views/Orders.vue"),
+    meta: {
+      requiresAuth: true,
+      permissions: ["order:read"],
+    },
+  },
+  {
+    path: "/403",
+    name: "forbidden",
+    component: () => import("@/views/Forbidden.vue"),
+  },
 ];
 
-const router = createRouter({ history: createWebHistory(), routes });
+const router = createRouter({
+  history: createWebHistory(),
+  routes,
+});
 
 router.beforeEach((to) => {
   const auth = useAuthStore();
 
-  const requiredRoles = to.meta.roles as string[] | undefined;
-  if (requiredRoles?.length && !requiredRoles.some((r) => auth.hasRole(r))) {
-    return "/403";
+  if (to.meta.requiresAuth && !auth.user) {
+    return { name: "login", query: { redirect: to.fullPath } };
   }
 
-  const requiredPerms = to.meta.permissions as string[] | undefined;
+  const roles = to.meta.roles;
+  if (roles?.length && !roles.some(auth.hasRole)) {
+    return { name: "forbidden" };
+  }
+
+  const permissions = to.meta.permissions;
   if (
-    requiredPerms?.length &&
-    !requiredPerms.every((p) => auth.hasPermission(p))
+    permissions?.length &&
+    !permissions.every(auth.hasPermission)
   ) {
-    return "/403";
+    return { name: "forbidden" };
   }
 });
 
 export default router;
 ```
 
----
+这里约定“多个角色满足任意一个，多个权限必须全部满足”。如果业务语义不同，应显式修改 `some` 或 `every`，不要让调用方猜测。
 
-### 4. 自定义指令 `directives/permission.ts`
+## 按钮与业务操作
+
+优先使用 `v-if` 做声明式显隐：
 
 ```ts
-import type { Directive } from "vue";
+// composables/usePermission.ts
 import { useAuthStore } from "@/stores/auth";
+import type { Permission, RoleName } from "@/types/rbac";
 
-// 用法: v-permission="'user:write'"
-export const vPermission: Directive<HTMLElement, string> = {
-  mounted(el, binding) {
-    const auth = useAuthStore();
-    if (!auth.hasPermission(binding.value)) {
-      el.remove(); // 或 el.style.display = 'none'
-    }
-  },
-};
+export function usePermission() {
+  const auth = useAuthStore();
+
+  return {
+    can: (permission: Permission) => auth.hasPermission(permission),
+    is: (role: RoleName) => auth.hasRole(role),
+  };
+}
 ```
 
-注册到 `main.ts`：
+```vue
+<script setup lang="ts">
+import { usePermission } from "@/composables/usePermission";
+
+const { can } = usePermission();
+
+async function deleteOrder() {
+  if (!can("order:delete")) return;
+  await orderApi.deleteCurrent();
+}
+</script>
+
+<template>
+  <button v-if="can('order:delete')" @click="deleteOrder">
+    删除订单
+  </button>
+</template>
+```
+
+需要复用低层 DOM 行为时，可以让指令接收已经计算好的布尔值。函数式指令会在 `mounted` 和 `updated` 时执行：
+
+```ts
+// directives/permission.ts
+import type { Directive } from "vue";
+
+export const vPermission: Directive<HTMLElement, boolean> = (
+  element,
+  binding,
+) => {
+  element.hidden = !binding.value;
+};
+```
 
 ```ts
 app.directive("permission", vPermission);
 ```
 
----
-
-### 5. 组合式函数 `composables/usePermission.ts`
-
-```ts
-import { computed } from "vue";
-import { useAuthStore } from "@/stores/auth";
-
-export function usePermission() {
-  const auth = useAuthStore();
-  const can = (perm: string) => computed(() => auth.hasPermission(perm));
-  const is = (role: string) => computed(() => auth.hasRole(role));
-  return { can, is };
-}
-```
-
----
-
-### 6. 组件中使用
-
 ```vue
-<script setup lang="ts">
-import { usePermission } from "@/composables/usePermission";
-const { can } = usePermission();
-</script>
-
-<template>
-  <!-- 指令方式 -->
-  <button v-permission="'user:write'">新建用户</button>
-
-  <!-- 响应式方式 -->
-  <button v-if="can('order:delete').value">删除订单</button>
-</template>
+<button v-permission="can('user:write')">新建用户</button>
 ```
 
-## 详细解析
+隐藏按钮不能阻止用户直接调用 API。路由、菜单、指令和组合式函数都属于前端展示与导航控制，最终授权结果必须由后端返回。
 
-逐步详细解释每一个部分的含义和作用。
+---
 
-### 第一步：类型定义 `types/rbac.ts`
+本篇把权限数据从登录恢复到界面控制串联起来。示例假设后端在当前用户接口中返回已解析的权限列表；角色与权限的权威关系仍保存在服务端。
+
+## 定义数据结构
 
 ```ts
-export type Permission = string; // e.g. 'user:read', 'order:delete'
+// types/rbac.ts
+export type Permission =
+  | "user:read"
+  | "user:write"
+  | "order:read"
+  | "order:delete";
 
-export interface Role {
-  name: string;
-  permissions: Permission[];
-}
+export type RoleName = "admin" | "editor" | "guest";
 
 export interface UserInfo {
-  id: number;
-  roles: string[];
+  id: string;
+  roles: RoleName[];
+  permissions: Permission[];
 }
 ```
 
-**这一步在做什么？**
+`Permission` 若只是 `string`，只能统一字段含义，不能阻止拼写错误。联合类型、常量推导或运行时 schema 才能进一步约束允许值。接口数据仍要做运行时校验，TypeScript 类型不会自动验证网络响应。
 
-这是整个 RBAC 系统的"数据蓝图"，用 TypeScript 定义了三个数据结构：
-
-- `Permission`：就是一个字符串，表示某个操作权限，比如 `'user:read'` 表示"可以读取用户"，`'order:delete'` 表示"可以删除订单"
-- `Role`：角色，有名字，并且拥有一组权限列表
-- `UserInfo`：登录用户的信息，有 id，并且属于哪些角色（一个用户可以同时有多个角色）
-
-**为什么要单独定义类型？**
-
-TypeScript 的核心价值就是类型安全。定义好这些类型后，后续所有地方用到权限、角色、用户的地方，IDE 都会自动提示和校验，不会写错。
-
----
-
-### 第二步：权限 Store `stores/auth.ts`
+## 权限 Store
 
 ```ts
-const roleMap: Record<string, Role> = {
-  admin: {
-    name: "admin",
-    permissions: ["user:read", "user:write", "order:delete"],
+// stores/auth.ts
+import { defineStore } from "pinia";
+import type {
+  Permission,
+  RoleName,
+  UserInfo,
+} from "@/types/rbac";
+import { accountApi } from "@/api/account";
+
+export const useAuthStore = defineStore("auth", {
+  state: () => ({
+    user: null as UserInfo | null,
+    sessionChecked: false,
+  }),
+
+  getters: {
+    permissionSet(state): ReadonlySet<Permission> {
+      return new Set(state.user?.permissions ?? []);
+    },
+
+    hasPermission(): (permission: Permission) => boolean {
+      return (permission) => this.permissionSet.has(permission);
+    },
+
+    hasRole:
+      (state) =>
+      (role: RoleName): boolean =>
+        state.user?.roles.includes(role) ?? false,
   },
-  editor: { name: "editor", permissions: ["user:read", "order:read"] },
-  guest: { name: "guest", permissions: ["order:read"] },
-};
-```
 
-**这是角色权限映射表**，相当于一张配置表：
+  actions: {
+    async restoreSession() {
+      if (this.sessionChecked) return;
 
-| 角色   | 拥有的权限             |
-| ------ | ---------------------- |
-| admin  | 读用户、写用户、删订单 |
-| editor | 读用户、读订单         |
-| guest  | 只能读订单             |
+      try {
+        this.user = await accountApi.getCurrentUser();
+      } catch {
+        this.user = null;
+      } finally {
+        this.sessionChecked = true;
+      }
+    },
 
-实际项目中这张表通常从后端接口获取，不是硬编码在前端。
-
----
-
-```ts
-state: () => ({
-  user: null as UserInfo | null,
-}),
-```
-
-**Store 的状态**，就是存当前登录用户的信息。初始为 `null`，登录后才有值。
-
----
-
-```ts
-getters: {
-  permissions(): Permission[] {
-    if (!this.user) return []
-    return this.user.roles.flatMap(r => roleMap[r]?.permissions ?? [])
+    logout() {
+      this.user = null;
+      this.sessionChecked = true;
+    },
   },
+});
 ```
 
-**计算当前用户拥有的所有权限**，逻辑是：
+`sessionChecked` 用来区分“尚未恢复会话”和“已经确认未登录”。仅检查本地是否存在 token 不能证明用户已认证：令牌可能过期、被撤销或被篡改，应用仍需向可信服务验证并取得当前用户。
 
-1. 用户没登录 → 返回空数组
-2. 用户登录了 → 遍历他的所有角色，把每个角色的权限合并成一个大数组
-
-举例：用户同时是 `admin` 和 `editor`，则权限合并为：
-
-```
-['user:read', 'user:write', 'order:delete', 'user:read', 'order:read']
-```
-
----
+## 路由守卫
 
 ```ts
-  hasPermission: (state) => (perm: Permission): boolean => {
-    const store = useAuthStore()
-    return store.permissions.includes(perm)
-  },
-  hasRole: (state) => (role: string): boolean =>
-    state.user?.roles.includes(role) ?? false,
-```
+// router/guard.ts
+import router from "@/router";
+import { useAuthStore } from "@/stores/auth";
+import type { Permission, RoleName } from "@/types/rbac";
 
-- `hasPermission`：检查用户是否有某个权限，返回 `true/false`
-- `hasRole`：检查用户是否属于某个角色，返回 `true/false`
-
-这两个方法是后续路由守卫、指令、组件判断的核心依据。
-
----
-
-```ts
-actions: {
-  setUser(user: UserInfo) { this.user = user },
-  logout()               { this.user = null  },
-},
-```
-
-- `setUser`：登录成功后调用，把用户信息存进 store
-- `logout`：退出登录，清空用户信息
-
----
-
-### 第三步：路由守卫 `router/index.ts`
-
-```ts
-const routes = [
-  { path: "/", component: Home },
-  { path: "/admin", component: Admin, meta: { roles: ["admin"] } },
-  { path: "/orders", component: Orders, meta: { permissions: ["order:read"] } },
-  { path: "/403", component: Forbidden },
-];
-```
-
-**路由配置**，重点是 `meta` 字段：
-
-- `/admin` 页面要求用户必须是 `admin` 角色才能访问
-- `/orders` 页面要求用户必须有 `order:read` 权限才能访问
-- `/403` 是没有权限时跳转的提示页面
-
-`meta` 就是给路由附加自定义信息，路由守卫里会读取它。
-
----
-
-```ts
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore();
+  await auth.restoreSession();
 
-  const requiredRoles = to.meta.roles as string[] | undefined;
-  if (requiredRoles?.length && !requiredRoles.some((r) => auth.hasRole(r))) {
-    return "/403";
+  if (to.meta.requiresAuth && !auth.user) {
+    return {
+      name: "login",
+      query: { redirect: to.fullPath },
+    };
   }
 
-  const requiredPerms = to.meta.permissions as string[] | undefined;
+  const roles = to.meta.roles as RoleName[] | undefined;
+  if (roles?.length && !roles.some(auth.hasRole)) {
+    return { name: "forbidden" };
+  }
+
+  const permissions = to.meta.permissions as Permission[] | undefined;
   if (
-    requiredPerms?.length &&
-    !requiredPerms.every((p) => auth.hasPermission(p))
+    permissions?.length &&
+    !permissions.every(auth.hasPermission)
   ) {
-    return "/403";
+    return { name: "forbidden" };
   }
 });
 ```
 
-**路由守卫**，每次跳转页面前都会执行这段代码，逻辑是：
+Vue Router 4 的守卫可以直接返回路由位置、`false` 或不返回值。第三个 `next` 参数仍受支持，但每条逻辑路径必须恰好调用一次，容易出错；新的代码通常更适合使用返回值。
 
-1. 读取目标页面要求的角色 `requiredRoles`
-   - 如果有要求，且用户一个都不满足 → 跳转 `/403`
-2. 读取目标页面要求的权限 `requiredPerms`
-   - 如果有要求，且用户不能全部满足 → 跳转 `/403`
+`to.meta` 是匹配到的父子路由记录 `meta` 的非递归合并结果。应明确权限数组的组合语义：示例要求任一角色、全部权限，复杂策略可改成单独的授权函数。
 
-注意：`some` 是"满足其中一个就行"，`every` 是"必须全部满足"，两种策略可以根据业务选择。
+## 自定义指令
+
+如果只需声明式控制，`v-if` 通常更清晰。确实需要复用 DOM 行为时，指令可以接收布尔结果：
+
+```ts
+// directives/permission.ts
+import type { Directive } from "vue";
+
+export const vPermission: Directive<HTMLElement, boolean> = (
+  element,
+  binding,
+) => {
+  element.hidden = !binding.value;
+};
+```
+
+函数式自定义指令会在元素挂载和父组件更新时执行。不要在 `mounted` 中直接 `remove()`：元素一旦移除，权限变化时不容易由同一指令恢复，而且指令内部读取 Store 也不一定会成为组件渲染依赖。
+
+## 组合式函数
+
+```ts
+// composables/usePermission.ts
+import { useAuthStore } from "@/stores/auth";
+import type { Permission, RoleName } from "@/types/rbac";
+
+export function usePermission() {
+  const auth = useAuthStore();
+
+  const can = (permission: Permission): boolean =>
+    auth.hasPermission(permission);
+
+  const is = (role: RoleName): boolean =>
+    auth.hasRole(role);
+
+  return { can, is };
+}
+```
+
+这里返回布尔值函数即可。Pinia getter 本身依赖响应式状态；组件渲染时调用 `can()` 会建立依赖，权限变化后视图会重新计算。无需在每次调用时额外创建一个 `computed`。
+
+## 组件中使用
+
+```vue
+<script setup lang="ts">
+import { usePermission } from "@/composables/usePermission";
+
+const { can, is } = usePermission();
+
+async function removeOrder() {
+  if (!can("order:delete")) return;
+  await orderApi.removeSelected();
+}
+</script>
+
+<template>
+  <p v-if="is('admin')">管理员区域</p>
+
+  <button
+    v-if="can('order:delete')"
+    @click="removeOrder"
+  >
+    删除订单
+  </button>
+
+  <button v-permission="can('user:write')">
+    新建用户
+  </button>
+</template>
+```
+
+即使按钮不可见，事件处理函数仍可保留一次本地判断，避免界面状态变化时误触发。但真正的拒绝必须发生在后端；攻击者可以绕过前端代码直接发送请求。
+
+## 整体流程
+
+```text
+应用启动或进入受保护路由
+  ↓
+恢复并验证会话，获取当前用户、角色和权限
+  ↓
+Store 保存可信接口返回的数据
+  ↓
+路由守卫控制导航
+  ↓
+组件、v-if 或指令控制界面展示
+  ↓
+请求到达后端，后端再次执行权威授权
+```
+
+Store、路由、指令与组合式函数是不同层次的前端消费方式，不是四道独立的安全防线。权限数据变更后还应考虑重新拉取、缓存失效以及已注册动态路由的清理。
 
 ---
 
-### 第四步：自定义指令 `directives/permission.ts`
+## 路由守卫
+
+导航守卫可以放行、取消或重定向一次导航。全局后置钩子 `afterEach` 在导航已经确认后运行，适合标题、埋点等操作，不能再阻止这次导航。
 
 ```ts
-export const vPermission: Directive<HTMLElement, string> = {
-  mounted(el, binding) {
-    const auth = useAuthStore();
-    if (!auth.hasPermission(binding.value)) {
-      el.remove();
+router.beforeEach(async (to) => {
+  const auth = useAuthStore();
+  await auth.restoreSession();
+
+  if (to.meta.requiresAuth && !auth.user) {
+    return {
+      name: "login",
+      query: { redirect: to.fullPath },
+    };
+  }
+});
+
+router.afterEach((to) => {
+  document.title =
+    typeof to.meta.title === "string"
+      ? to.meta.title
+      : "默认标题";
+});
+```
+
+路由独享守卫使用 `beforeEnter`：
+
+```ts
+const routes = [
+  {
+    path: "/admin",
+    name: "admin",
+    component: () => import("@/views/Admin.vue"),
+    beforeEnter: () => {
+      const auth = useAuthStore();
+      if (!auth.hasRole("admin")) {
+        return { name: "forbidden" };
+      }
+    },
+  },
+];
+```
+
+Options API 组件还可以使用组件内守卫：
+
+```js
+export default {
+  beforeRouteEnter(to, from, next) {
+    next((instance) => {
+      instance.fetchData();
+    });
+  },
+
+  beforeRouteUpdate(to) {
+    this.fetchData(to.params.id);
+  },
+
+  beforeRouteLeave() {
+    if (this.hasUnsavedChanges) {
+      return false;
     }
   },
 };
 ```
 
-**这是控制 DOM 元素显隐的指令**，用法是：
+`beforeRouteEnter` 执行时组件实例尚未创建，只能通过传给 `next` 的回调在导航确认后访问实例。其余新代码通常可采用守卫返回值，避免 `next` 被遗漏或重复调用。
 
-```html
-<button v-permission="'user:write'">新建用户</button>
-```
+## 路径参数不等于运行时动态路由
 
-工作原理：
-
-- 元素挂载到页面时（`mounted`）触发
-- 读取指令的值，也就是权限字符串 `'user:write'`
-- 检查当前用户有没有这个权限
-- 没有权限 → 直接把这个 DOM 元素从页面上删掉
-
-**和路由守卫的区别**：
-
-- 路由守卫 → 控制整个页面能不能进入（页面级）
-- 指令 → 控制页面内某个按钮/元素能不能看到（元素级）
-
----
-
-### 第五步：组合式函数 `composables/usePermission.ts`
+`/users/:id` 中的 `:id` 是动态路径参数；路由记录在创建 Router 时已经存在，只是参数值不同：
 
 ```ts
-export function usePermission() {
-  const auth = useAuthStore();
-  const can = (perm: string) => computed(() => auth.hasPermission(perm));
-  const is = (role: string) => computed(() => auth.hasRole(role));
-  return { can, is };
-}
-```
-
-**这是对 Store 的再封装**，让组件用起来更简洁。
-
-返回两个方法：
-
-- `can('order:delete')`：当前用户能不能做这个操作，返回响应式的布尔值
-- `is('admin')`：当前用户是不是这个角色，返回响应式的布尔值
-
-用 `computed` 包裹是因为：用户信息可能变化（比如刷新权限），`computed` 能自动追踪变化并更新视图。
-
----
-
-### 第六步：组件中使用
-
-```vue
-<script setup lang="ts">
-import { usePermission } from "@/composables/usePermission";
-const { can } = usePermission();
-</script>
-
-<template>
-  <!-- 指令方式 -->
-  <button v-permission="'user:write'">新建用户</button>
-
-  <!-- 响应式方式 -->
-  <button v-if="can('order:delete').value">删除订单</button>
-</template>
-```
-
-两种方式对比：
-
-| 方式                 | 适合场景                         |
-| -------------------- | -------------------------------- |
-| `v-permission` 指令  | 简单的显隐控制，代码更简洁       |
-| `can().value` 组合式 | 需要在 JS 逻辑中判断权限，更灵活 |
-
-## 整体流程串联
-
-```
-用户登录
-  ↓
-调用 setUser() 存入 Store
-  ↓
-用户点击菜单跳转页面
-  ↓
-路由守卫检查角色/权限 → 无权限跳 /403
-  ↓
-进入页面，v-permission 指令检查每个按钮 → 无权限删除 DOM
-  ↓
-JS 逻辑中用 can() 动态判断是否执行某操作
-```
-
-这四层防护（Store → 路由 → 指令 → 组合式函数）覆盖了从页面到按钮的全部权限控制场景。
-
-## 路由守卫 + 动态路由
-
-### 路由守卫 (Navigation Guards)
-
-**用途：控制路由导航的行为**，在路由跳转前/后执行逻辑。
-
-1. 全局守卫
-
-```js
-const router = createRouter({ ... })
-
-// 全局前置守卫（最常用）
-router.beforeEach((to, from, next) => {
-  const isLoggedIn = localStorage.getItem('token')
-
-  if (to.meta.requiresAuth && !isLoggedIn) {
-    next('/login')  // 未登录则重定向
-  } else {
-    next()          // 放行
-  }
-})
-
-// 全局后置守卫
-router.afterEach((to, from) => {
-  document.title = to.meta.title || '默认标题'
-})
-```
-
-2. 路由独享守卫
-
-```js
 const routes = [
   {
-    path: "/admin",
-    component: Admin,
-    beforeEnter: (to, from, next) => {
-      if (!isAdmin()) next("/403");
-      else next();
-    },
+    path: "/users/:id",
+    name: "user-detail",
+    component: () => import("@/views/UserDetail.vue"),
   },
 ];
-```
 
-3. 组件内守卫
-
-```js
-// 在 .vue 组件内
-export default {
-  beforeRouteEnter(to, from, next) {
-    // 组件实例还未创建
-    next((vm) => {
-      /* 通过 vm 访问实例 */
-    });
-  },
-  beforeRouteUpdate(to, from) {
-    // 当前路由改变但组件被复用时
-    this.fetchData(to.params.id);
-  },
-  beforeRouteLeave(to, from) {
-    // 离开当前路由前
-    if (this.hasUnsavedChanges) return false;
-  },
-};
-```
-
----
-
-### 动态路由 (Dynamic Routes)
-
-**用途：在运行时动态添加/删除路由**，常用于权限系统按需加载路由。
-
-### 动态路由参数（路径参数）
-
-```js
-// :id 是动态参数
-const routes = [
-  { path: "/user/:id", component: UserDetail },
-  { path: "/article/:category/:id", component: Article },
-];
-
-// 组件中获取参数
-import { useRoute } from "vue-router";
 const route = useRoute();
 console.log(route.params.id);
 ```
 
-- 动态添加路由（addRoute）
+运行时动态路由则是应用启动后通过 `addRoute()` 和 `removeRoute()` 改变路由表：
 
-```js
-// 登录后根据权限动态添加路由
-async function setupRoutesByRole(role) {
-  if (role === "admin") {
-    router.addRoute({
-      path: "/admin",
-      component: () => import("./views/Admin.vue"),
-    });
-    router.addRoute({
-      path: "/stats",
-      component: () => import("./views/Stats.vue"),
-    });
-  }
-}
-
-// 删除路由
-router.removeRoute("routeName");
-```
-
----
-
-### 两者结合使用（典型权限方案）
-
-```js
-// 1. 路由守卫拦截所有导航
-router.beforeEach(async (to, from, next) => {
-  const token = localStorage.getItem("token");
-  if (!token && to.path !== "/login") {
-    return next("/login");
-  }
-
-  // 2. 动态路由：已登录但路由未初始化
-  if (token && !store.state.routesLoaded) {
-    const userRole = await fetchUserRole();
-
-    // 根据角色动态添加路由
-    const accessRoutes = generateRoutesByRole(userRole);
-    accessRoutes.forEach((route) => router.addRoute(route));
-
-    store.state.routesLoaded = true;
-
-    // 重新导航，确保新路由生效
-    return next({ ...to, replace: true });
-  }
-
-  next();
+```ts
+const removeAdminRoute = router.addRoute({
+  path: "/admin",
+  name: "admin",
+  component: () => import("@/views/Admin.vue"),
 });
+
+// addRoute 返回的函数可以移除刚注册的记录。
+removeAdminRoute();
+
+// 有名称的记录也可以按名称移除。
+router.removeRoute("admin");
 ```
 
----
+`addRoute()` 只注册记录。如果新记录会匹配当前地址，需要再次导航才能显示它；在导航守卫内添加时，应返回目标位置触发新的导航，并确保下一轮不会再次添加导致无限重定向。
 
-## 核心区别总结
+## 完整动态路由方案
 
-| 维度         | 路由守卫                     | 动态路由                   |
-| ------------ | ---------------------------- | -------------------------- |
-| **本质**     | 导航拦截器/钩子函数          | 路由表的动态增删           |
-| **解决问题** | 控制"能不能跳转"             | 控制"有没有这条路由"       |
-| **执行时机** | 每次路由跳转时触发           | 程序运行中按需调用         |
-| **典型场景** | 登录验证、权限检查、页面标题 | 按角色加载菜单、懒加载路由 |
-| **核心 API** | `beforeEach` / `afterEach`   | `addRoute` / `removeRoute` |
+### 定义路由表
 
-## 实例
+每个要按名称移除的动态路由都应提供唯一 `name`：
 
-### 核心思路
+```ts
+// router/routes.ts
+import type { RouteRecordRaw } from "vue-router";
 
-```
-用户登录 → 获取角色/权限 → 动态路由生成可访问菜单 → 路由守卫拦截非法访问
-```
-
-### 完整实现方案
-
-1. 定义路由表（按权限分类）
-
-```js
-// router/routes.js
-
-// 所有人都能访问的基础路由
-export const constantRoutes = [
-  { path: "/login", component: () => import("@/views/Login.vue") },
-  { path: "/403", component: () => import("@/views/403.vue") },
-  { path: "/", component: () => import("@/views/Home.vue") },
+export const constantRoutes: RouteRecordRaw[] = [
+  {
+    path: "/login",
+    name: "login",
+    component: () => import("@/views/Login.vue"),
+    meta: { title: "登录", public: true, hidden: true },
+  },
+  {
+    path: "/403",
+    name: "forbidden",
+    component: () => import("@/views/Forbidden.vue"),
+    meta: { title: "无权限", public: true, hidden: true },
+  },
+  {
+    path: "/",
+    name: "home",
+    component: () => import("@/views/Home.vue"),
+    meta: { title: "首页", requiresAuth: true },
+  },
 ];
 
-// 需要权限才能访问的路由（带 meta.roles 标识）
-export const asyncRoutes = [
+export const permissionRoutes: RouteRecordRaw[] = [
   {
     path: "/admin",
+    name: "admin",
     component: () => import("@/views/Admin.vue"),
-    meta: { roles: ["admin"] },
+    meta: { title: "管理", roles: ["admin"] },
   },
   {
     path: "/editor",
+    name: "editor",
     component: () => import("@/views/Editor.vue"),
-    meta: { roles: ["admin", "editor"] },
+    meta: { title: "编辑", roles: ["admin", "editor"] },
   },
   {
-    path: "/user",
-    component: () => import("@/views/User.vue"),
-    meta: { roles: ["admin", "editor", "viewer"] },
+    path: "/users",
+    name: "users",
+    component: () => import("@/views/Users.vue"),
+    meta: { title: "用户", roles: ["admin", "editor", "viewer"] },
   },
 ];
 ```
 
----
+### 递归过滤路由
 
-2. 权限过滤工具函数
+只使用顶层 `filter()` 会遗漏嵌套路由。下面约定：没有 `roles` 的记录可访问；有多个角色时满足任意一个即可。
 
-```js
-// utils/permission.js
+```ts
+// utils/permission.ts
+import type { RouteRecordRaw } from "vue-router";
 
-/**
- * 根据用户角色过滤路由
- * @param {Array} routes - 待过滤的路由
- * @param {String} role  - 用户角色
- */
-export function filterRoutesByRole(routes, role) {
-  return routes.filter((route) => {
-    // 没有配置 roles，所有人可访问
-    if (!route.meta?.roles) return true;
+function canAccess(
+  route: RouteRecordRaw,
+  userRoles: readonly string[],
+): boolean {
+  const required = route.meta?.roles as string[] | undefined;
+  return !required?.length ||
+    required.some((role) => userRoles.includes(role));
+}
 
-    // 检查用户角色是否在允许列表中
-    return route.meta.roles.includes(role);
+export function filterRoutesByRole(
+  routes: readonly RouteRecordRaw[],
+  userRoles: readonly string[],
+): RouteRecordRaw[] {
+  return routes.flatMap((route) => {
+    if (!canAccess(route, userRoles)) return [];
+
+    const children = route.children
+      ? filterRoutesByRole(route.children, userRoles)
+      : undefined;
+
+    return [{
+      ...route,
+      ...(children ? { children } : {}),
+    }];
   });
 }
 ```
 
----
+如果业务允许“父路由无权限但某个子路由有权限”，过滤策略需要先处理子级，再决定是否保留布局父级；这属于另一种明确的权限模型。
 
-3. Pinia 权限 Store
+### Pinia Store 注册并清理路由
 
-```js
-// stores/permission.js
+`router.addRoute()` 返回移除函数。退出登录或切换账号时调用这些函数，才能真正清除旧用户的动态路由。
+
+```ts
+// stores/permission.ts
 import { defineStore } from "pinia";
-import { asyncRoutes, constantRoutes } from "@/router/routes";
-import { filterRoutesByRole } from "@/utils/permission";
+import type { RouteRecordRaw } from "vue-router";
 import router from "@/router";
+import {
+  constantRoutes,
+  permissionRoutes,
+} from "@/router/routes";
+import { filterRoutesByRole } from "@/utils/permission";
+
+let removeRouteCallbacks: Array<() => void> = [];
 
 export const usePermissionStore = defineStore("permission", {
   state: () => ({
-    accessRoutes: [], // 当前用户可访问的路由
+    accessRoutes: [] as RouteRecordRaw[],
     isRoutesLoaded: false,
   }),
 
   actions: {
-    async generateRoutes(role) {
-      // 1. 根据角色过滤路由
-      const accessRoutes = filterRoutesByRole(asyncRoutes, role);
+    generateRoutes(userRoles: readonly string[]) {
+      this.resetRoutes();
 
-      // 2. 动态添加到路由器
-      accessRoutes.forEach((route) => router.addRoute(route));
+      const accessRoutes = filterRoutesByRole(
+        permissionRoutes,
+        userRoles,
+      );
 
-      // 3. 保存到 store（用于生成侧边栏菜单）
+      removeRouteCallbacks = accessRoutes.map((route) =>
+        router.addRoute(route),
+      );
+
       this.accessRoutes = [...constantRoutes, ...accessRoutes];
       this.isRoutesLoaded = true;
     },
 
     resetRoutes() {
-      // 退出登录时清除动态路由
+      removeRouteCallbacks.forEach((removeRoute) => removeRoute());
+      removeRouteCallbacks = [];
       this.accessRoutes = [];
       this.isRoutesLoaded = false;
     },
@@ -682,116 +698,99 @@ export const usePermissionStore = defineStore("permission", {
 });
 ```
 
----
+### 守卫入口
 
-4. 路由守卫（整个 RBAC 的入口）
+本地 token 只能表示“存在一个候选凭据”，不能证明会话有效。`restoreSession()` 或 `fetchUserInfo()` 应调用后端验证凭据，并返回可信的角色与权限。
 
-```js
-// router/guard.js
+```ts
+// router/guard.ts
 import router from "@/router";
+import { useAuthStore } from "@/stores/auth";
 import { usePermissionStore } from "@/stores/permission";
-import { useUserStore } from "@/stores/user";
 
-const WHITE_LIST = ["/login", "/403"];
+const publicRouteNames = new Set(["login", "forbidden"]);
 
-router.beforeEach(async (to, from, next) => {
-  const userStore = useUserStore();
-  const permissionStore = usePermissionStore();
-  const token = userStore.token;
+router.beforeEach(async (to) => {
+  const auth = useAuthStore();
+  const permission = usePermissionStore();
 
-  // ① 未登录
-  if (!token) {
-    return WHITE_LIST.includes(to.path) ? next() : next("/login");
+  await auth.restoreSession();
+
+  if (!auth.user) {
+    permission.resetRoutes();
+
+    if (publicRouteNames.has(String(to.name))) return;
+
+    return {
+      name: "login",
+      query: { redirect: to.fullPath },
+    };
   }
 
-  // ② 已登录，访问登录页 → 直接去首页
-  if (to.path === "/login") {
-    return next("/");
+  if (to.name === "login") {
+    return { name: "home" };
   }
 
-  // ③ 已登录，路由已加载 → 正常放行
-  if (permissionStore.isRoutesLoaded) {
-    return next();
-  }
+  if (!permission.isRoutesLoaded) {
+    permission.generateRoutes(auth.user.roles);
 
-  // ④ 已登录，首次进入，动态加载路由
-  try {
-    // 获取用户信息（包含角色）
-    await userStore.fetchUserInfo();
-
-    // 根据角色生成并注册动态路由
-    await permissionStore.generateRoutes(userStore.role);
-
-    // 重新导航（确保动态路由生效）
-    next({ ...to, replace: true });
-  } catch (error) {
-    // token 失效等异常，清空登录状态
-    userStore.logout();
-    next("/login");
+    // 新路由可能正好匹配当前地址，重新发起一次替换导航。
+    return { path: to.fullPath, replace: true };
   }
 });
 ```
 
----
+若角色或权限刷新，应先 `resetRoutes()` 再生成新路由。登出动作也应同时清理认证状态和动态路由。
 
-5. 侧边栏菜单（动态路由驱动）
+### 侧边栏菜单
 
 ```vue
-<!-- components/Sidebar.vue -->
-<template>
-  <nav>
-    <router-link v-for="route in menuRoutes" :key="route.path" :to="route.path">
-      {{ route.meta.title }}
-    </router-link>
-  </nav>
-</template>
-
-<script setup>
+<script setup lang="ts">
 import { computed } from "vue";
 import { usePermissionStore } from "@/stores/permission";
 
 const permissionStore = usePermissionStore();
 
-// 过滤掉不需要展示在菜单中的路由
 const menuRoutes = computed(() =>
-  permissionStore.accessRoutes.filter((r) => !r.meta?.hidden),
+  permissionStore.accessRoutes.filter(
+    (route) => route.meta?.hidden !== true,
+  ),
 );
 </script>
+
+<template>
+  <nav>
+    <router-link
+      v-for="route in menuRoutes"
+      :key="String(route.name)"
+      :to="{ name: route.name }"
+    >
+      {{ route.meta?.title }}
+    </router-link>
+  </nav>
+</template>
 ```
 
----
+## 流程图
 
-## 整体流程图
-
-```
-用户登录
-   ↓
-路由守卫 beforeEach 拦截
-   ↓
-有 Token？
-  ├── 否 → 跳转 /login
-  └── 是 ↓
-      路由已加载？
-        ├── 是 → 直接 next()
-        └── 否 ↓
-            fetchUserInfo() 获取角色
-               ↓
-            filterRoutesByRole() 过滤路由
-               ↓
-            addRoute() 注册动态路由
-               ↓
-            next({ ...to, replace: true }) 重新导航
-               ↓
-            侧边栏根据 accessRoutes 渲染菜单
+```text
+触发导航
+  ↓
+向后端恢复或验证会话
+  ├─ 未认证 → 清理动态路由 → 登录页
+  └─ 已认证
+       ↓
+     路由是否已按当前角色注册？
+       ├─ 是 → 继续导航
+       └─ 否
+            ↓
+          递归过滤权限路由
+            ↓
+          addRoute() 注册并保存移除函数
+            ↓
+          返回当前地址，重新匹配
+            ↓
+          用 accessRoutes 生成菜单
 ```
 
----
-
-### 总结
-
-| 职责                  | 使用技术                   |
-| --------------------- | -------------------------- |
-| 拦截未登录/未授权访问 | 路由守卫 `beforeEach`      |
-| 按角色分配可访问页面  | 动态路由 `addRoute`        |
-| 动态生成侧边栏菜单    | 动态路由 + Pinia store     |
-| 退出时清除权限        | `removeRoute` + store 重置 |
+动态路由与菜单过滤只减少前端暴露的入口。用户仍能构造请求，因此后端必须对每个资源和操作执行真正的 RBAC 授权。

@@ -18,7 +18,7 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 | 默认宽度              | 撑满父容器 100%        | 由内容决定                     |
 | 可设置 width/height   | 是                     | 否（替换元素除外）             |
 | 可设置 margin/padding | 上下左右均可           | 只有左右生效（上下不影响布局） |
-| 可包含的内容          | 可包含块级和行内元素   | 只能包含行内元素（`<a>` 除外） |
+| 可包含的内容          | 不能仅凭块级表现判断，需遵循具体元素的 HTML 内容模型 | 不能仅凭行内表现判断，需遵循具体元素的 HTML 内容模型 |
 | 典型代表              | `<div>`, `<p>`, `<h1>` | `<span>`, `<a>`, `<img>`       |
 
 ---
@@ -115,8 +115,9 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 
 ::: details 补充知识（相对路径和绝对路径）
 
-- **相对路径**：不在路径的最前面加 `/` ，路径将会从当前文件的位置开始计算
-- **绝对路径**：在路径的最前面加`/`，路径将会从当前项目的根目录开始计算
+- **相对 URL**：如 `./images/a.png`、`../images/a.png`，浏览器会相对于当前文档的基准 URL 解析。
+- **根相对 URL**：如 `/images/a.png`，浏览器会从当前网站的源站根路径开始解析，并不是从项目根目录开始。
+- **绝对 URL**：如 `https://example.com/images/a.png`，包含完整的协议、域名和路径。
   :::
 
 ### 2. 链接 <Badge type="tip" text="行内元素" />
@@ -161,6 +162,13 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 ```html
 <video width="320" height="240" controls>
   <source src="movie.mp4" type="video/mp4" />
+  <track
+    src="subtitles-zh.vtt"
+    kind="subtitles"
+    srclang="zh"
+    label="中文"
+    default
+  />
 </video>
 
 <video src="movie.mp4" controls width="320" height="240">
@@ -177,7 +185,7 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 - loop：布尔属性，表示视频循环播放。
 - muted：布尔属性，表示视频静音播放。
 - poster：视频封面的 URL。
-- track：字幕文件 URL。
+- `<track>`：不是 `<video>` 的属性，而是 `<video>` 或 `<audio>` 的子元素；`src` 属性用于指定 WebVTT 字幕文件，`kind`、`srclang`、`label` 和 `default` 用于描述字幕轨道。
 
 ### 4. 列表 <Badge type="danger" text="使用频率低" />
 
@@ -253,6 +261,7 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
       <td>男</td>
     </tr>
     <tr>
+      <td>李四</td>
       <td>25</td>
       <td>女</td>
     </tr>
@@ -322,13 +331,13 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 </table>
 
 - 表格（table）：用于呈现数据。
-- 表头（thead）：包含表格的标题。
+- 表头行组（thead）：用于组织表格的表头行，通常包含由 `<th>` 单元格组成的 `<tr>`。
 - 表格行（tr）：包含表格的行。
 - 表头单元格（th）：包含表头的单元格。
 - 数据单元格（td）：包含数据单元格。
-- caption：用于对表格的标题进行描述。
+- 表格标题（caption）：用于为整个 `<table>` 提供标题或简短说明，通常放在表格内容的最前面。
 - colgroup：用于对表格的列进行分组。
-- rowgroup：用于对表格的行进行分组。
+- 表格行组（thead、tbody、tfoot）：分别用于组织表头、表体和表尾中的行；HTML 中不存在 `<rowgroup>` 元素，`rowgroup` 是对应的 ARIA 角色名称。
 
 ### 6. 框架和嵌入代码
 
@@ -340,14 +349,18 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 **实现效果：**
 
 <div>我是内容</div>
-<iframe width="1000" height="500" src="//player.bilibili.com/player.html?isOutside=true&aid=115841794442308&bvid=BV1z2i4BYEPL&cid=35206138484&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>
+<iframe
+  width="1000"
+  height="500"
+  src="//player.bilibili.com/player.html?isOutside=true&aid=115841794442308&bvid=BV1z2i4BYEPL&cid=35206138484&p=1"
+  style="border: 0"
+  allowfullscreen
+></iframe>
 
 - 内嵌框架（iframe）：用于在当前页面中嵌入另一个页面。
-- scrolling="no"：用于禁止iframe内容的滚动。
-- frameborder="no"：用于隐藏iframe的边框。
-- border="0"：用于隐藏iframe的边框。
-- framespacing="0"：用于隐藏iframe的边框。
-- allowfullscreen="true"：用于允许iframe全屏显示。
+- `style="border: 0"`：使用 CSS 隐藏 iframe 边框。
+- `allowfullscreen`：布尔属性，表示允许 iframe 进入全屏模式。
+- `scrolling`、`frameborder`、`border` 和 `framespacing` 均为已废弃的表现属性，不应在现代 HTML 中继续使用。
 
 ::: info
 可以设引入自己的页面
@@ -380,7 +393,7 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
   <label>电子邮件：<input name="username" type="email" required /></label>
   <label>密码：<input name="password" type="password" required /></label>
   <button type="submit">提交</button>
-  <reset type="reset">重置</reset>
+  <button type="reset">重置</button>
 </form>
 ```
 
@@ -429,7 +442,7 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 ```
 
 - name 用于设置单选框或多选框的名称和分组
-- checked 用于设置默认值
+- checked：布尔属性，用于设置单选框或复选框的初始选中状态；表单提交的值仍由 value 决定。
 - value 用于设置值
 
 ### 4.下拉列表
@@ -449,10 +462,9 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 
 - select：用于创建下拉列表。
 - option：用于创建下拉列表的选项。
-- selected：用于设置默认值。
+- selected：`<option>` 的布尔属性，用于标记页面初始加载时选中的选项。
 - multiple：用于设置多选。
 - size：用于设置下拉列表展示几个内容
-- selected：用于设置默认值。
 
 ### 5.文本域
 
@@ -467,7 +479,7 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 - textarea：用于创建多行文本输入框。
 - rows：用于设置文本域的行数。
 - cols：用于设置文本域的列数。
-- placeholder maxlength min max 等属性与 input 标签相同。
+- textarea 支持 placeholder、minlength、maxlength、required、disabled、readonly 等属性，但不支持 min 和 max；min、max 主要用于适用的 input 类型。
 
 ## HTML矢量图
 
@@ -523,14 +535,13 @@ HTML5 语义化标签：HTML5 引入了语义化的标签，如 `<header>`、`<f
 
 ### 3.无障碍 WAI-ARIA
 
-尽量使用语义化标签和属性，并添加 aria-\* 属性来提供额外的上下文信息。
+优先使用具有原生语义的 HTML 元素；只有在原生语义无法表达所需信息时，才补充适当的 ARIA 角色和 `aria-*` 属性，避免重复或冲突的无障碍语义。
 
 ```html
-<button aria-label="Close">X</button>
-<div role="button" aria-label="Close">X</div>
+<button type="button" aria-label="关闭">X</button>
 ```
 
 - role：用于提供元素的角色。
 - aria-label：用于提供按钮的文字描述。
-- aria-haspopup：用于提供下拉菜单或弹出窗口的角色。
+- aria-haspopup：表示该元素可以触发弹出内容；可使用 `true`、`menu`、`listbox`、`tree`、`grid` 或 `dialog` 等值描述弹出内容的类型。
 - aria-expanded：用于提供下拉菜单或弹出窗口的展开状态。

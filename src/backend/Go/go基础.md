@@ -1,13 +1,15 @@
 # go语言教程
 
-## 0. 模块（go.mod）
+## 模块（go.mod）
 
-每个 Go 项目以**模块（module）** 为单位，由 `go.mod` 文件定义：
+Go module 是一组一起进行版本管理的包，由 `go.mod` 文件定义。一个代码仓库可以只有一个 module，也可以包含多个 module；一个 module 内也可以包含多个命令和包，因此“项目”和 module 不是严格的一一对应关系。
 
-```go
+```gomod
 module test-demo       // 模块路径，也是其他代码导入时的前缀
-go 1.26                // 使用的 Go 版本
+go 1.26                // 模块要求的最低 Go 语言版本
 ```
+
+`go` 指令会影响语言语义和 Go 命令对最低版本的判断，但它不等同于记录当前实际执行的工具链版本；需要建议具体工具链时可使用 `toolchain` 指令。
 
 - `go mod init <模块名>` — 初始化一个新模块
 - `go mod tidy` — 自动添加/移除依赖
@@ -17,7 +19,7 @@ go 1.26                // 使用的 Go 版本
 >
 > ⚠️ **运行提示**：各章节示例代码都是独立的 `package main` + `func main`，若直接全部放到同一目录编译会报 `main redeclared` 错误。想实际运行某段示例时，请把它的代码单独放到一个子目录中（例如 `test-demo/ch03/main.go`），每个子目录就是一个可独立运行的小程序。
 
-## 1. 基础语法
+## 基础语法
 
 ```go
 package main // 包
@@ -38,8 +40,8 @@ func main() {
 	inputOutput()
 	var a1, a2 = 1, 2 // 一次赋值多个
 	fmt.Println(a1, a2)
-	// 名称大写字母开头，即为公有类型/变量/常量（可被其他包访问）
-	// 名称小写字母开头，即为私有类型/变量/常量（仅包内可见）
+    // 包级标识符、字段或方法的名称以 Unicode 大写字母开头时为 exported，
+    // 可被其他包引用；其余名称不导出，但仍可在同一包内访问。
 	// 注意：下划线 _ 开头的是空标识符，与访问权限无关
 }
 func inputOutput() {
@@ -59,12 +61,12 @@ func inputOutput() {
 }
 ```
 
-## 2. 基本类型
+## 基本类型
 
 ### 整数型
 
-1. 默认的数字定义类型是int类型
-2. 带个u就是无符号，只能存正整数
+1. 整数字面量本身通常是无类型常量；进入需要具体类型的上下文后，未显式指定类型时常默认推断为 `int`
+2. `uint` 等无符号整数可以表示零和正整数，不能表示负数
 3. 后面的数字就是2进制的位数
 4. uint8还有一个别名 byte， 一个字节=8个bit位
 5. int类型的大小取决于所使用的平台
@@ -76,12 +78,12 @@ func inputOutput() {
 1. float32的浮点数的最大范围约为3.4e38，可以使用常量定义：`math.MaxFloat32`
 2. float64的浮点数的最大范围约为 1.8e308，可以使用一个常量定义：`math.MaxFloat64`
 
-### 字符型 (不是字符串)
+### rune（Unicode 码点）
 
 > byte 等同于 uint8
 
-1. byte（单字节字符）
-2. rune（多字节字符） 可以表示中文 日文...
+1. `byte` 是 `uint8` 的别名，通常用于表示原始字节；一个 UTF-8 字符可能由多个 byte 编码
+2. `rune` 是 `int32` 的别名，用于表示一个 Unicode 码点；码点不等同于用户看到的完整字符（例如某些字符由多个码点组合）
 
 ```go
 package main // 包
@@ -89,8 +91,10 @@ import "fmt"
 
 func main() {
 	var a byte = 'a'
+	var r rune = '中'
 	// a 97 uint8
 	fmt.Printf("%c %d %T\n", a, a, a)
+	fmt.Printf("%c %U %T\n", r, r, r)
 }
 
 ```
@@ -128,6 +132,7 @@ func main() {
 ### 常量
 
 - 常量可以用作枚举
+- 未显式声明类型的常量是无类型常量，能够在其值可表示的前提下适配不同的数值类型；把它赋给变量或传入需要具体类型的上下文时才会发生默认类型推断或转换
 
 ```go
 const (
@@ -150,7 +155,9 @@ const (
 
 > 💡 **省略表达式的行**：当某行省略表达式时（如上面的 `c, d`），它会**复用上一行的表达式模板**，但 `iota` 的值会自增。所以 `c, d` 等价于 `iota + 1, iota + 2`（此时 `iota=1`，得到 `c=2, d=3`）。`i, k` 同理复用 `iota * 2, iota * 3`（`iota=4`，得到 `i=8, k=12`）。
 
-## 3. 数组、切片（列表）、map
+---
+
+## 数组、切片与 map
 
 ### 数组
 
@@ -166,15 +173,15 @@ func main() {
 }
 ```
 
-### 切片 (列表)
+### 切片
 
 ```go
 func main() {
 	// === 切片的几种创建方式 ===
-	// 方式1：make([]T, len) —— 推荐用法
-	// make 会分配底层数组；这里 len=0，得到长度和容量都为 0 的「空但已初始化」切片
-	// 优先用这种：底层数组已就绪，可直接 append，没有 nil 切片相关问题
-	var nameList []string = make([]string, 0) // 优先使用这种
+	// 方式1：make([]T, len)
+	// 这里 len=0、cap=0；实现不必为它分配可用的底层数组。
+	// nil 切片同样可以安全 append，是否使用 make 取决于是否要预设长度或容量。
+	var nameList []string = make([]string, 0)
     // nameList := make([]int, 3) // 空间3 初始化值0 让:=自动推导为切片
 
 	// 方式2：字面量 —— 带初始元素，编译期确定底层数组，len=cap=3
@@ -202,7 +209,7 @@ func main() {
 }
 ```
 
-#### 切片容量追加和截取
+#### 切片的容量、追加与截取
 
 ```go
 package main
@@ -230,8 +237,8 @@ func main() {
 	numbers = append(numbers, 2)
 	fmt.Printf("len = %d, cap = %d, slice = %v\n\n", len(numbers), cap(numbers), numbers)
 
-	// 向numbers切片追加一个元素3 超过容量
-	// len = 6, cap = 10, slice = [0 0 0 1 2 3]
+	// 向 numbers 切片追加一个元素 3，超过原容量后会扩容。
+	// 新容量由运行时实现决定，不应依赖它恰好翻倍为 10。
 	numbers = append(numbers, 3)
 	fmt.Printf("len = %d, cap = %d, slice = %v\n\n", len(numbers), cap(numbers), numbers)
 
@@ -247,7 +254,8 @@ func main() {
 	fmt.Println(s)  // [100 2 3]
 	fmt.Println(s1) // [100 2]
 
-	// 深拷贝 copy函数
+	// copy 会复制切片元素；对 int 这类值元素，结果拥有独立的底层数组。
+	// 若元素内部仍含指针、切片或 map，copy 不会递归复制其指向的数据。
 	s2 := make([]int, 3) //[0, 0, 0]
 	copy(s2, s)          // s --> s2
 	fmt.Println(s2)      // [100 2 3]
@@ -266,6 +274,7 @@ func main() {
 
 	// 也可以只声明 不赋值
 	var myMap3 map[string]string
+	_ = myMap3 // 仅演示 nil map；局部变量必须被使用
 
 	// 声明方式2：字面量
 	m2 := map[string]string{
@@ -305,7 +314,9 @@ func main() {
 
 > 注意：map 的零值是 nil，向 nil map 写入会 panic，必须先用 make 初始化。
 
-## 4. 函数
+---
+
+## 函数
 
 - 多返回值
 - 命名返回值
@@ -437,9 +448,9 @@ func main() {
 ```
 
 > 应用场景：初始化配置、注册驱动、校验环境变量等。
-> 同一文件内多个 init 按出现顺序从上到下执行；跨文件时按文件名排序执行；多个包的 init 按导入依赖顺序执行——被依赖的包先 init。
+> 同一文件内多个 `init` 按出现顺序执行；同一包跨文件的初始化顺序不应依赖文件名，Go 规范只鼓励构建系统按词法文件名顺序向编译器提供文件。包之间会先初始化被依赖的包，再初始化当前包。
 
-## 4.1 错误处理（error）
+## 错误处理（error）
 
 Go 没有 `try/except` 异常机制。错误就是一个普通的**返回值**，类型是内置接口 `error`：
 
@@ -449,9 +460,9 @@ type error interface {
 }
 ```
 
-惯用法是**多返回值 (结果, 错误)**：成功时 `err == nil`，失败时 `err != nil`。**调用方必须检查 err**，不检查就是 bug。
+惯用法是**多返回值 (结果, 错误)**：成功时 `err == nil`，失败时 `err != nil`。调用方通常应检查错误；若确实有意忽略，也应使用 `_` 或注释明确表达意图。
 
-### 1. 创建错误 — `errors.New` / `fmt.Errorf`
+### 创建错误 — `errors.New` / `fmt.Errorf`
 
 ```go
 package main
@@ -479,28 +490,29 @@ func main() {
 }
 ```
 
-### 2. 错误包装 — `fmt.Errorf("%w")`
+### 错误包装 — `fmt.Errorf("%w")`
 
 下层函数返回的错误，上层不要原样抛，而应该**加上自己的上下文**再往外传，这样排错时能看到完整的调用链。用 `%w` 包装（不是 `%s`）：
 
 ```go
 func readConfig(path string) error {
-	_, err := os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		// %w 把原始 err 包进去，保留它的类型信息
 		return fmt.Errorf("读取配置 %s 失败: %w", path, err)
 	}
+	defer file.Close()
 	return nil
 }
 ```
 
-> `%w`（wrap）和 `%s`/`%v` 的区别：`%w` 包裹的错误**还能被 `errors.Is/As` 识别**；`%s` 只是拼成字符串，原始错误的类型信息就丢了。所以包装错误一律用 `%w`。
+> `%w`（wrap）和 `%s`/`%v` 的区别：`%w` 包裹的错误**还能被 `errors.Is/As` 识别**；`%s`/`%v` 只把文本写入新错误。调用方需要检查底层错误时使用 `%w`；若有意隐藏底层错误身份，则不要包装。
 
-### 3. 判断错误 — `errors.Is` vs `errors.As`
+### 判断错误 — `errors.Is` 与 `errors.As`
 
 | 函数                      | 用途                                            | 对比对象            |
 | ------------------------- | ----------------------------------------------- | ------------------- |
-| `errors.Is(err, target)`  | 判断 err 链里**是否等于**某个哨兵错误（值相等） | 一个具体的 error 值 |
+| `errors.Is(err, target)`  | 沿错误链判断是否匹配目标；除可比较值相等外，也会调用错误自定义的 `Is` 方法 | 一个具体的 error 值 |
 | `errors.As(err, &target)` | 判断 err 链里**是否能赋值给**某个类型，并取出它 | 一个 error **类型** |
 
 **哨兵错误**（预定义的错误值，用于 `==` 比较）：
@@ -537,7 +549,9 @@ func (e *ValidationError) Error() string {
 }
 
 func main() {
-	err := someFunc() // 返回 *ValidationError（可能被 %w 包装过）
+	err := fmt.Errorf("保存用户失败: %w", &ValidationError{
+		Field: "email", Message: "格式不正确",
+	})
 
 	var ve *ValidationError
 	if errors.As(err, &ve) {
@@ -546,7 +560,7 @@ func main() {
 }
 ```
 
-### 4. panic / recover —— 仅限真异常
+### panic / recover —— 仅限真异常
 
 `error` 是**正常的失败**（文件打不开、网络超时），`panic` 是**不该发生的事**（数组越界、nil 解引用）。`panic` 会一路向上崩，直到被 `recover` 接住（通常在 defer 里），否则程序退出。
 
@@ -561,7 +575,7 @@ func safeDiv(a, b int) (result int, err error) {
 }
 ```
 
-> 经验：**99% 的情况用 error**。只在解析配置失败导致程序无法启动、或库的内部不变量被破坏时才 panic。不要用 panic 当异常用。
+> 可预期的失败优先返回 `error`。`panic` 更适合程序无法继续维持不变量的情况；库代码通常不应把普通输入错误当作 panic。
 
 ### 一句话总结
 
@@ -570,7 +584,7 @@ func safeDiv(a, b int) (result int, err error) {
 - 比较错误：值用 `errors.Is`，类型用 `errors.As`。
 - `panic/recover` 只给真正的程序错误，日常逻辑用 `error`。
 
-## 5. 导包
+## 包与导入
 
 Go中如果导包不使用, 编译会报错. 匿名导包不使用就不会报错
 
@@ -583,7 +597,9 @@ import (
 )
 ```
 
-## 6. 指针
+---
+
+## 指针
 
 Go 有指针，但没有指针运算（不像 C）。指针保存值的**内存地址**。
 
@@ -658,7 +674,7 @@ type BigStruct struct {
 // ❌ 每次调用拷贝 1MB
 func process(b BigStruct) {}
 
-// ✅ 只拷贝 8 字节（指针大小）
+// ✅ 只复制一个指针值；指针大小取决于目标体系结构，通常是一个机器字
 func process(b *BigStruct) {}
 ```
 
@@ -669,9 +685,9 @@ type User struct {
     Name string
 }
 
-// 值接收者 — 不能修改原对象
-func (u User) Rename(name string) {
-    u.Name = name  // ❌ 修改的是副本
+// 值接收者 — 读取或修改副本
+func (u User) DisplayName() string {
+    return u.Name
 }
 
 // 指针接收者 — 可以修改原对象
@@ -679,6 +695,8 @@ func (u *User) Rename(name string) {
     u.Name = name  // ✅ 修改原对象
 }
 ```
+
+同一个基础类型不能仅靠值接收者与指针接收者来“重载”两个同名方法；上例因此使用了不同的方法名。
 
 | 接收者        | 方法集                              |
 | ------------- | ----------------------------------- |
@@ -716,15 +734,17 @@ for _, n := range nums {
 | 特性            | Go                    | C                  |
 | --------------- | --------------------- | ------------------ |
 | 指针运算        | ❌ 不允许             | ✅ 允许            |
-| 空指针          | nil（安全，会 panic） | NULL（未定义行为） |
+| 空指针          | nil（解引用会 panic） | NULL（错误解引用会产生未定义行为） |
 | 垃圾回收        | ✅ 自动管理           | ❌ 手动管理        |
 | 取地址 / 解引用 | `&` / `*`             | `&` / `*`          |
 
-> **一句话总结**：Go 的指针更安全——不能做指针运算，不用担心野指针和内存泄漏。`&` 取地址，`*` 解引用，指针零值是 `nil`。
+> **一句话总结**：Go 不支持普通指针运算，并由垃圾回收器管理可达内存，但仍可能出现 nil 解引用、对象长期被引用造成的内存滞留，以及未关闭文件或连接等资源泄漏。`&` 取地址，`*` 解引用，指针零值是 `nil`。
 
-## 7. defer
+## defer
 
 `defer` 是什么, 函数结束时执行的语句, 和Java的`finally` 类似
+
+延迟调用会在外围函数正常返回或发生 panic 时执行；`os.Exit` 会立即终止进程，不会执行尚未运行的 `defer`。
 
 ```go
 func main() {
@@ -775,18 +795,20 @@ func deferNamed() (result int) {
 // 结果为 11
 ```
 
-## 8. 面向对象
+---
 
-### 结构体
+## 结构体、方法与接口
 
-貌似类似于Java的类
+### 结构体与方法
+
+结构体用于组合字段，方法可以绑定到已定义类型。Go 没有 class 和传统继承体系，通常通过组合与接口组织行为。
 
 ```go
 package main
 
 import "fmt"
 
-// 声明一种新的数据类型 myint 是int的别名
+// 声明新的定义类型 myint；它与 int 具有相同底层类型，但不是别名
 type myint int
 
 // 定义一个结构体
@@ -818,16 +840,16 @@ func main() {
 }
 ```
 
-Go中的类:
+Go 中的结构体与方法：
 
 ```go
 package main
 
 import "fmt"
 
-// Hero 如果类名首字母大写，表示其他包也能够访问
+// Hero 名称已导出，其他包可以引用
 type Hero struct {
-	// 如果说类的属性首字母大写，表示该属性是对外能够访问的，否则的话只能够类的内部访问
+	// 字段名大写表示已导出；小写字段可在同一个包内访问，而不是只在“类内部”访问
 	Name  string
 	Age   int
 	Level int
@@ -848,16 +870,16 @@ func main() {
 }
 ```
 
-### 继承
+### 结构体嵌入与组合
 
 ```go
 package main
 
 import "fmt"
 
-// Hero 如果类名首字母大写，表示其他包也能够访问
+// Human 名称已导出，其他包可以引用
 type Human struct {
-	// 如果说类的属性首字母大写，表示该属性是对外能够访问的，否则的话只能够类的内部访问
+	// 小写字段 sex 在同一个包内可见
 	Name string
 	sex  string
 }
@@ -869,13 +891,13 @@ func (h *Human) Walk() {
 	fmt.Println("Human Walk")
 }
 
-// SuperHuman 继承
+// SuperHuman 嵌入 Human，属于组合，并会提升 Human 的字段和方法
 type SuperHuman struct {
-	Human // SuperHuman继承Human类方法
+	Human
 	level int
 }
 
-// Walk 重写父类方法
+// Walk 与提升的方法同名时，选择 SuperHuman 自己声明的方法；这不是类继承中的 override
 func (h *SuperHuman) Walk() {
 	fmt.Println("Superman Walk")
 }
@@ -896,7 +918,7 @@ func main() {
 	happy2.Eat()
 	happy2.Walk()
 
-	// 定义子类
+	// 创建组合类型
 	cry := SuperHuman{
 		Human{"Alex", "man"},
 		88,
@@ -908,22 +930,16 @@ func main() {
 	said.sex = "man"
 	said.level = 1
 
-	cry.Walk() // 重写父类
+	cry.Walk() // 调用 SuperHuman 自己的 Walk
 	cry.Fly()  // 子类独有
-	cry.Eat()  // 继承父类
+	cry.Eat()  // 调用被提升的 Human.Eat
 
 }
 ```
 
-### 多态 (接口)
+### 接口与多态
 
-本质上是一种指针
-
-多态: (传什么对象, 调什么对象的方法)
-
-1. 有一个父类(有接口)
-2. 有子类(实现了父类的全部接口方法)
-3. 父类类型的变量(指针) 指向(引用) 子类的具体数据变量
+接口值由动态类型和动态值共同描述，但接口本身不能简单等同于指针。接口不要求父类或子类关系：函数接收接口值后，会根据传入值的动态类型调用相应方法。
 
 > Go 的接口是**隐式实现**：不需要像 Java 那样写 `implements`，只要一个类型实现了接口里定义的**全部方法**，它就自动满足该接口。上面的 `*Cat` 和 `*Dog` 都实现了 `AnimalIF` 的三个方法，所以它们都是 `AnimalIF`。
 
@@ -987,7 +1003,7 @@ func main() {
 }
 ```
 
-### 空接口 万能类型
+### 空接口与 any
 
 ```go
 package main
@@ -1023,9 +1039,11 @@ func main() {
 }
 ```
 
-## 9. 反射
+---
 
-如果变量包含`type`(要么是静态类型(`static type`)要么是具体类型(`current type`))和value称为`pair`, 反射就是能够通过一个变量得到`type`. 反射主要是通过一个变量找到当前变量的具体类型(也可以得到值)
+## 反射
+
+普通变量具有编译期静态类型；接口值还携带动态类型和动态值（常被非正式地描述为一个 pair）。`reflect.TypeOf` 和 `reflect.ValueOf` 可以在运行时检查传入值的类型和值，但不能把“动态 pair”泛化成所有变量的统一运行时表示。
 
 简单介绍pair:
 
@@ -1049,7 +1067,7 @@ func main() {
 }
 ```
 
-另一个例子:(pair在传递过程中保持不变)
+另一个例子（具体值赋给接口后，接口记录其动态类型和值）：
 
 ```go
 package main
@@ -1061,21 +1079,13 @@ import (
 )
 
 func main() {
-	// tty: pair <type:*os.File, value:"/dev/tty"文件描述符>
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	// pair <type: , value: >
-	var r io.Reader
-	// r: pair <type:*os.File, value:"/dev/tty"文件描述符>符
-	r = tty
+	// os.Stdin 在 Windows、macOS 和 Linux 上都是 *os.File；这里无需自行打开或关闭终端设备。
+	var r io.Reader = os.Stdin
+	fmt.Printf("动态类型: %T\n", r)
 }
 ```
 
-### reflect
+### reflect 包
 
 ```go
 package main
@@ -1112,6 +1122,10 @@ func main() {
 func DoFileAndMethod(input interface{}) {
 	// 获取input的Type
 	inputType := reflect.TypeOf(input)
+	if inputType == nil || inputType.Kind() != reflect.Struct {
+		fmt.Println("input 必须是非 nil 结构体值")
+		return
+	}
 	fmt.Println(inputType.Name()) // User
 	fmt.Println(inputType)        // main.User
 
@@ -1186,8 +1200,12 @@ type resume struct {
 }
 
 func findTag(str interface{}) {
-	// Elem() 就是解引用，去掉指针的 *
-	t := reflect.TypeOf(str).Elem()
+	t := reflect.TypeOf(str)
+	if t == nil || t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Struct {
+		fmt.Println("参数必须是指向结构体的非 nil 指针")
+		return
+	}
+	t = t.Elem()
 
 	for i := 0; i < t.NumField(); i++ {
 		taginfo := t.Field(i).Tag.Get("info")
@@ -1209,7 +1227,7 @@ func main() {
 
 > **核心思想**：结构体标签 = 给字段贴的"便签纸"。程序本身不看它，但第三方库通过反射读取它来做对应的事情。
 
-### 结构体标签在 json 中的运用
+### JSON 中的结构体标签
 
 `json` 标签是结构体标签中**最常用**的，用于控制结构体与 JSON 之间的转换。
 
@@ -1228,7 +1246,7 @@ type User struct {
 | ------------------- | ---------------------------------------- |
 | `json:"name"`       | JSON 中字段名为 "name"                   |
 | `json:"-"`          | 该字段不参与 JSON 序列化/反序列化        |
-| `json:",omitempty"` | 零值（0、""、nil、false 等）时省略该字段 |
+| `json:",omitempty"` | 值为 false、0、nil 指针/接口，或长度为 0 的字符串、数组、切片、map 时省略；普通结构体值不会仅因字段都是零值而自动省略 |
 
 #### 序列化与反序列化
 
@@ -1278,15 +1296,15 @@ func main() {
 
 > **判断规则**：函数需要**修改**你的变量 → 传指针 `&`；函数只是**读取** → 传值。
 >
-> 常见需要传指针的函数：`json.Unmarshal`、`json.Decode`、`db.Scan`、`fmt.Scan` 等。
+> 常见需要传指针的函数：`json.Unmarshal`、`(*json.Decoder).Decode`、`db.Scan`、`fmt.Scan` 等。`encoding/json` 包没有顶层的 `json.Decode` 函数。
 
-### 9.1 泛型（类型参数）
+## 泛型（类型参数）
 
 Go 1.18 引入了**泛型（Generics）**，可以用一套代码写「对任意类型都成立」的函数和类型，告别「为 int/float64/string 各抄一遍」或者退而求其次用 `interface{}` + 类型断言。
 
-> 反射（9 章）是**运行时**借助 `interface{}` 探查类型；泛型是**编译期**就确定类型、保留类型安全、零运行开销。能用泛型就别用反射。
+> 反射是在运行时检查类型和值；泛型在编译期进行类型检查，并能减少类型断言。具体实现可能采用单态化、字典传递或共享代码等策略，因此不应笼统承诺“零运行开销”。
 
-### 1. 泛型函数 —— `[T any]`
+### 泛型函数 —— `[T any]`
 
 在函数名后、参数前，用方括号声明**类型参数 T**，`any` 是它的约束（任意类型都行）：
 
@@ -1313,7 +1331,7 @@ func main() {
 - 同一个 `Reverse`，int 切片、string 切片都能用。
 - 不需要 `interface{}`，也不需要类型断言，**编译期类型安全**。
 
-### 2. 类型约束 —— `comparable` 与自定义约束
+### 类型约束 —— `comparable` 与自定义约束
 
 `any` 太宽，很多操作需要类型具备某种能力（比如「可比较」「是数字」）。约束放在方括号里：
 
@@ -1357,9 +1375,9 @@ func main() {
 }
 ```
 
-> 标准库 `golang.org/x/exp/constraints`（以及 Go 1.21 起部分迁入标准库）提供了 `constraints.Ordered`（支持 `<` `>`）等现成约束，不必自己写。
+> 当前标准库的 `cmp.Ordered` 提供常用的有序类型约束。`golang.org/x/exp/constraints` 属于实验性扩展模块，并未整体迁入标准库。
 
-### 3. 泛型类型 —— 泛型切片/Map/结构体
+### 泛型类型 —— 泛型切片、Map 与结构体
 
 ```go
 // 泛型栈：任意类型的栈，一套实现
@@ -1400,8 +1418,8 @@ func main() {
 
 | 方案                | 类型安全      | 运行开销 | 何时用                                  |
 | ------------------- | ------------- | -------- | --------------------------------------- |
-| **泛型**            | ✅ 编译期保证 | 无       | 需要对多种类型写同一套逻辑（首选）      |
-| `interface{}`/`any` | ❌ 运行时断言 | 装箱     | 类型真的无法预知（如通用容器、JSON）    |
+| **泛型**            | ✅ 编译期保证 | 取决于编译器实现与具体代码 | 需要对多种类型写同一套逻辑 |
+| `interface{}`/`any` | 需要运行时断言 | 可能发生接口转换或分配 | 类型在运行时才确定 |
 | 反射                | ❌ 运行时探查 | 有       | 处理结构体标签、ORM、序列化等元数据场景 |
 
 ### 一句话总结
@@ -1409,9 +1427,11 @@ func main() {
 - 泛型 = `func 名[T 约束](...)`，类型参数放方括号，调用时通常可自动推断。
 - `any` 任意类型，`comparable` 可比较，自定义 `interface { int | float64 | ... }` 做联合约束。
 - 泛型类型写 `type Stack[T any] struct{...}`，方法接收者带上 `[T]`。
-- 优先泛型 > `interface{}` > 反射。
+- 根据问题选择工具：同一算法处理一组受约束类型时优先考虑泛型；动态异构值用接口；必须运行时检查结构时再使用反射。
 
-## 10. goroutine 协程
+---
+
+## goroutine 与 GMP 调度模型
 
 ![img.png](/assert/go-image/多线程.png)
 
@@ -1428,7 +1448,7 @@ Goroutine 是 Go 语言中的**轻量级线程**，由 Go 运行时（runtime）
 
 | 特点                 | 说明                                    |
 | -------------------- | --------------------------------------- |
-| **极轻量**           | 初始栈仅 ~2KB（OS 线程通常 1-8MB）      |
+| **极轻量**           | 使用可动态增长和收缩的小栈，通常远小于 OS 线程栈 |
 | **低成本创建**       | 可轻松创建数十万个                      |
 | **由 Go 调度器管理** | 使用 M:N 调度模型，多路复用到 OS 线程上 |
 
@@ -1441,6 +1461,7 @@ package main
 
 import (
     "fmt"
+    "sync"
     "time"
 )
 
@@ -1452,11 +1473,19 @@ func sayHello(name string) {
 }
 
 func main() {
-    go sayHello("goroutine-1")  // 启动 goroutine
-    go sayHello("goroutine-2")  // 启动另一个 goroutine
+    var wg sync.WaitGroup
+    wg.Add(2)
+    go func() {
+        defer wg.Done()
+        sayHello("goroutine-1")
+    }()
+    go func() {
+        defer wg.Done()
+        sayHello("goroutine-2")
+    }()
 
-    sayHello("main")           // main 本身也是 goroutine
-    time.Sleep(500 * time.Millisecond) // 等待其他 goroutine 完成
+    sayHello("main") // main 本身也运行在 goroutine 中
+    wg.Wait()         // 明确等待两个工作 goroutine 完成
 }
 ```
 
@@ -1517,6 +1546,8 @@ func main() {
 - **M (Machine)**：OS 线程，执行代码
 - **P (Processor)**：逻辑处理器，持有本地运行队列
 
+这张图只是心智模型。实际调度还涉及全局运行队列、P 之间的 work stealing、网络轮询器、系统调用阻塞，以及 M 获取 P 后才能执行 Go 代码等机制。
+
 ### runtime.Goexit()
 
 ```go
@@ -1552,9 +1583,9 @@ func main() {
 }
 ```
 
-### goroutine 通信方式
+### goroutine 协作方式
 
-#### 1. Channel（推荐）
+#### Channel
 
 ```go
 ch := make(chan string)
@@ -1567,7 +1598,7 @@ msg := <-ch // 接收
 fmt.Println(msg)
 ```
 
-#### 2. sync.WaitGroup
+#### sync.WaitGroup
 
 ```go
 var wg sync.WaitGroup
@@ -1583,13 +1614,17 @@ for i := 0; i < 5; i++ {
 wg.Wait() // 等待所有完成
 ```
 
+`WaitGroup` 只用于等待一组任务完成，不负责传递业务数据；数据通信可使用 channel，共享状态也可以根据场景使用互斥锁或原子操作保护。
+
 ### 注意事项
 
 - **main 退出时所有 goroutine 会被终止**，需要同步机制等待
-- **共享数据需要加锁**（`sync.Mutex`）或用 channel 通信
+- **共享数据必须正确同步**，可根据场景使用 channel、`sync.Mutex`、`sync/atomic` 等机制
 - **不要通过共享内存通信，要通过通信来共享内存**（Go 哲学）
 
-## 11. channel
+---
+
+## channel 与 select
 
 基本使用:
 
@@ -1628,7 +1663,7 @@ func main() {
 
 > 带缓冲的channel满时，发送方会阻塞，直到接收方读取数据腾出空间。
 
-### 关闭channel
+### 关闭 channel
 
 ```go
 package main
@@ -1657,7 +1692,8 @@ func main() {
 	}()
 
 	for {
-		// ok为true表示channel没有关闭 false表示关闭
+		// 若关闭前还有缓冲数据，接收这些值时 ok 仍为 true；
+		// 只有通道已关闭且缓冲区已读空时，ok 才为 false。
 
 		if data, ok := <-c; ok {
 			fmt.Println(data)
@@ -1669,7 +1705,9 @@ func main() {
 }
 ```
 
-### channel与range
+并非所有 channel 都必须关闭。只有接收方需要“不会再有值”的信号时才需要关闭，且通常由发送方或明确拥有发送生命周期的一方关闭；不要为了释放 channel 本身而关闭它。
+
+### channel 与 range
 
 ```go
 package main
@@ -1709,7 +1747,7 @@ func main() {
 }
 ```
 
-### channel与select
+### channel 与 select
 
 单流程下一个go只能监控一个channel的状态，select可以完成监控多个channel的状态
 
@@ -1751,11 +1789,11 @@ func main() {
 }
 ```
 
-## 11.1 context（上下文）
+## context（上下文）
 
 goroutine + channel 解决了「并发」和「通信」，但还有一个现实问题没解决：**怎么在需要时取消一批 goroutine？怎么给它们设超时？怎么在 goroutine 之间传递请求级的截止时间/值？**
 
-答案就是 `context` 包。可以说：写 Go 的并发，`goroutine` + `channel` + `context` 是三件套，缺一不可。
+`context` 包用于在调用链中传播取消、截止时间和请求级值。并非每段并发代码都必须同时使用 goroutine、channel 和 context，应按生命周期与通信需求选择。
 
 > 一句话理解：**`context.Context` 是一次请求/一次操作的「生命周期管家」**，沿着调用链向下传，负责「取消信号」和「截止时间」的传播。
 
@@ -1763,14 +1801,15 @@ goroutine + channel 解决了「并发」和「通信」，但还有一个现实
 
 约定：**函数的第一个参数通常是 `ctx context.Context`**，从 `main` / HTTP handler 一路传下去。不要把 ctx 存进结构体里，要显式传参。
 
-### 1. 创建根 context
+### 创建根 context
 
 ```go
-ctx := context.Background()   // 空上下文，通常用于 main / 测试 / 顶层
-ctx := context.TODO()         // 还没想好传什么时占位
+background := context.Background() // 空上下文，通常用于 main / 测试 / 顶层
+todo := context.TODO()             // 暂时还不能确定上游 context 时占位
+_, _ = background, todo
 ```
 
-### 2. 派生子 context —— 取消 / 超时 / 传值
+### 派生子 context —— 取消、超时与传值
 
 | 函数                               | 作用                                          |
 | ---------------------------------- | --------------------------------------------- |
@@ -1779,9 +1818,9 @@ ctx := context.TODO()         // 还没想好传什么时占位
 | `context.WithDeadline(parent, t)`  | 同上，指定绝对时间点                          |
 | `context.WithValue(parent, k, v)`  | 在 ctx 上带一个键值（请求级数据，如 traceID） |
 
-> 铁律：**`WithCancel/WithTimeout/WithDeadline` 返回的 `cancel()` 必须调用**，否则该 ctx 以及它派生出的所有子 ctx 在超时前都不会被回收（资源泄漏）。通常 `defer cancel()`。
+> 调用方应调用 `WithCancel`、`WithTimeout`、`WithDeadline` 返回的 `cancel()`，以尽快释放关联的计时器和引用；即使超时最终会触发，也通常在创建后立即 `defer cancel()`。
 
-### 3. 演示：取消信号传播
+### 演示：取消信号传播
 
 ```go
 package main
@@ -1824,7 +1863,7 @@ func main() {
 - 子 goroutine 用 `select { case <-ctx.Done(): }` 监听取消。
 - `cancel()` 一调用，所有从该 ctx 派生出去的 goroutine **同时**收到信号——这就是「取消一批 goroutine」。
 
-### 4. 演示：超时控制
+### 演示：超时控制
 
 调用外部 API/数据库时最常用：超过时限自动取消。
 
@@ -1853,13 +1892,14 @@ func main() {
 }
 ```
 
-### 5. WithValue —— 请求级数据传递
+### WithValue —— 请求级数据传递
 
 ```go
-ctx = context.WithValue(ctx, "traceID", "abc-123")
-// 取出（注意：key 建议用自定义类型，避免碰撞）
 type ctxKey string
-v := ctx.Value(ctxKey("traceID"))
+const traceIDKey ctxKey = "traceID"
+
+ctx := context.WithValue(context.Background(), traceIDKey, "abc-123")
+v := ctx.Value(traceIDKey)
 ```
 
 > `WithValue` 只传**请求作用域的值**（traceID、userID、token），**不要**用它传函数参数。滥用会让代码难追踪。
@@ -1871,17 +1911,19 @@ v := ctx.Value(ctxKey("traceID"))
 - 子 goroutine 用 `<-ctx.Done()` 监听退出，`ctx.Err()` 看退出原因（`canceled` / `deadline exceeded`）。
 - `WithValue` 只传请求级元数据，不传业务参数。
 
-## 12. Go PATH
+---
+
+## Go Modules 解决的问题
 
 Go modules解决了哪些问题:
 
 1. Go语言长久以来的依赖管理问题。
-2. “淘汰"现有的GOPATH的使用模式。
+2. 让项目源码和依赖版本不再必须依赖传统的 `GOPATH/src` 工作区布局；`GOPATH` 本身仍用于模块缓存、安装目录等默认位置，并未消失。
 3. 统一社区中的其它的依赖管理工具(提供迁移功能)。
 
-## 13. Go Modules
+## Go Modules 常用操作
 
-### go mod 命令
+### 常用 `go mod` 命令
 
 | 命令              | 作用                               |
 | ----------------- | ---------------------------------- |
@@ -1890,15 +1932,15 @@ Go modules解决了哪些问题:
 | `go mod tidy`     | 整理依赖：添加缺少的，删除未使用的 |
 | `go mod graph`    | 打印依赖关系图                     |
 | `go mod edit`     | 用命令行编辑 go.mod                |
-| `go mod vendor`   | 导出项目所有的依赖到 vendor 目录   |
-| `go mod verify`   | 校验依赖完整性                     |
+| `go mod vendor`   | 把构建和测试主模块所需的依赖包复制到 `vendor` 目录；使用方式受 Go 版本和 `-mod` 设置影响 |
+| `go mod verify`   | 检查已下载模块内容是否与模块缓存中记录的校验值一致，不验证依赖业务正确性 |
 | `go mod why`      | 解释为什么需要某个依赖             |
 
-使用 `go mod init 模块名称` 初始化模块 (使用Goland 则自动创建)
+使用 `go mod init 模块路径` 显式初始化模块并创建 `go.mod`。IDE 可以提供向导，但不应假定它一定会自动创建。
 
-### 改变依赖关系
+### 调整依赖版本与来源
 
-#### 切换版本 — 用 `go get`
+#### 使用 `go get` 切换版本
 
 ```bash
 go get github.com/gin-gonic/gin@v1.8.0   # 降级到指定版本
@@ -1906,9 +1948,9 @@ go get github.com/gin-gonic/gin@latest    # 升级到最新
 go get github.com/gin-gonic/gin@abc1234   # 指定某个 commit
 ```
 
-直接修改 go.mod 里的 `require` 版本号，适合切换到已发布的版本。
+通常优先使用 `go get 模块@版本` 调整依赖，让 Go 命令同步维护间接依赖和 `go.sum`。手工编辑 `require` 不是与 `go get` 完全等价的首选流程，编辑后至少应运行 `go mod tidy` 并测试。
 
-#### 本地替换 — 用 `replace`
+#### 使用 `replace` 进行本地替换
 
 ```bash
 go mod edit -replace=github.com/gin-gonic/gin=../local/gin
@@ -1916,9 +1958,9 @@ go mod edit -replace=github.com/gin-gonic/gin=../local/gin
 
 用本地目录替换远程包，适合本地调试或 fork 自己维护。
 
-#### go.mod 里的区别
+#### `require` 与 `replace` 的区别
 
-```go
+```gomod
 // go get 的效果 - 直接改 require
 require (
     github.com/gin-gonic/gin v1.8.0
@@ -1929,20 +1971,23 @@ require (
     github.com/gin-gonic/gin v1.9.1
 )
 replace (
-    github.com/gin-gonic/gin => ../local/gin)
+    github.com/gin-gonic/gin => ../local/gin
+)
 ```
 
-## 14. 单元测试（testing）
+---
+
+## 单元测试
 
 Go 自带测试框架，不需要第三方库。规则简单、约定大于配置：
 
-### 1. 三条约定
+### 基本约定
 
 1. 测试文件名必须以 `_test.go` 结尾（如 `main_test.go`），编译时不会被建进产物。
-2. 测试函数签名必须是 `func TestXxx(t *testing.T)`，名字以 `Test` 开头，参数是 `*testing.T`。
-3. 测试文件和被测代码**同一个包**。
+2. 测试函数签名是 `func TestXxx(t *testing.T)`：名称以 `Test` 开头，紧随其后的首个字符不能是小写字母，且函数不能有其他参数或返回值。
+3. 测试文件可以使用被测包本身，也可以使用以 `_test` 结尾的外部测试包；前者可访问包内未导出标识符，后者只能通过导出 API 测试。
 
-### 2. 第一个测试
+### 第一个测试
 
 假设有 `calc.go`：
 
@@ -1980,7 +2025,7 @@ go test -cover     # 输出覆盖率
 go test -coverprofile=cover.out && go tool cover -html=cover.out  # 生成 HTML 覆盖率报告
 ```
 
-### 3. 表驱动测试（Go 最推荐的写法）
+### 表驱动测试
 
 把多组输入/期望列成表，循环跑，避免为每种情况写一个函数：
 
@@ -2013,14 +2058,14 @@ func TestAdd(t *testing.T) {
 
 `t.Run` 创建**子测试**，输出会按用例名分组，`go test -run TestAdd/负数` 可以只跑某个子用例。
 
-### 4. 失败的几种方式
+### 失败、跳过与日志
 
 | API                    | 行为                                                           |
 | ---------------------- | -------------------------------------------------------------- |
 | `t.Error` / `t.Errorf` | 标记失败，**继续**往下执行                                     |
 | `t.Fatal` / `t.Fatalf` | 标记失败，**立刻停止**当前测试函数（遇到不能继续的错误用这个） |
 | `t.Skip` / `t.Skipf`   | 跳过该用例（如缺环境）                                         |
-| `t.Log` / `t.Logf`     | 记日志（`-v` 才显示）                                          |
+| `t.Log` / `t.Logf`     | 记录日志；测试失败时会显示，成功测试通常需配合 `-v` 才显示      |
 
 ```go
 func TestSlice(t *testing.T) {
@@ -2034,31 +2079,33 @@ func TestSlice(t *testing.T) {
 }
 ```
 
-### 5. 测试工具 `testing.T` 的常用方法
+### `testing.T` 的常用方法
 
-- `t.Parallel()` —— 标记这个测试可与其他测试**并行**跑（提速，但用例间不能有共享状态）。
+- `t.Parallel()` —— 先暂停当前测试，待所属的顺序测试函数返回后，再与其他并行测试一起运行。并行用例不能无同步地共享可变状态。
 - `t.Cleanup(func())` —— 注册清理函数，测试结束时按 LIFO 顺序执行（替代手写 defer 链）。
 
-### 6. 基准测试（Benchmark）—— 性能
+## 基准测试
 
-签名 `func BenchmarkXxx(b *testing.B)`，用 `b.N` 跑很多次：
+签名 `func BenchmarkXxx(b *testing.B)`。Go 1.24 起推荐使用 `b.Loop()`，由测试框架控制迭代次数并更准确地管理计时区间：
 
 ```go
 func BenchmarkAdd(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		Add(2, 3)
 	}
 }
 ```
 
 ```bash
-go test -bench=.        # 跑所有基准
-go test -bench=BenchmarkAdd -benchmem   # 同时看内存分配
+go test -run=^$ -bench=.                         # 只跑所有基准，不运行普通测试
+go test -run=^$ -bench=BenchmarkAdd -benchmem   # 同时看内存分配
 ```
 
-### 一句话总结
+如果不指定 `-run=^$`，`go test -bench=...` 默认仍会先运行匹配的普通测试。
 
-- 文件 `_test.go`，函数 `func TestXxx(t *testing.T)`，同包。
+## 小结
+
+- 文件使用 `_test.go`，测试函数使用规定签名；可选择同包测试或 `_test` 外部包测试。
 - 首选**表驱动 + `t.Run` 子测试**；失败 `t.Error`（继续）/ `t.Fatal`（停止）。
 - `go test -v -cover` 看详情和覆盖率，`-bench` 跑性能。
 - 这个项目目录就叫 `test-demo`，正好可以建 `xxx_test.go` 实操——`go test` 是 Go 工程的肌肉记忆。

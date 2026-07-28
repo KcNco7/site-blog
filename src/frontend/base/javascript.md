@@ -34,24 +34,25 @@
 
 ### 2. 变量与数据类型
 
-用Java的语法去写保证没问题，JavaScript严格区分大小写。
+JavaScript 与 Java 是两种不同的语言，虽然部分基础语法形式相似，但类型系统、对象模型和运行机制均不同，不能直接按 Java 语法编写。JavaScript 严格区分大小写。
 
 - number JavaScript不区分小数和整数。 `123` `123.2` 浮点数会有精度损失。
 - string `'abc'` `"abc"`
 - boolean `true` `false`
 - 与或非 `&&` `||` `!`
-- 赋值： `=` 等于（类型不一样，值一样也会判断为true）：`==` 绝对等于（类型一样，值一样会判断为true）：`===`
-- NaN `NaN` 只能通过 `isNaN()` 判断
+- `=` 用于赋值；`==` 是宽松相等，比较时可能进行类型转换；`===` 是严格相等，不进行类型转换。通常应优先使用 `===`。
+- `NaN` 表示“非数值”的数值结果；可使用 `Number.isNaN(value)` 进行精确判断。全局 `isNaN()` 会先把参数转换为数值，判断语义不同。
 - null `null` 空
 - undefined `undefined` 未定义
 - 数组 `[1, 2, 3, 'hello', true, null, undefined]` 索引从0开始, 索引越界会返回undefined
 - 对象 `{name: 'hello', age: 18}`
 
 ```javascript
-var person = {name: 'hello',
-              age: 18
-              target: [1, 2, 3]
-              }
+var person = {
+  name: 'hello',
+  age: 18,
+  target: [1, 2, 3]
+};
 ```
 
 ## 数据类型
@@ -59,25 +60,25 @@ var person = {name: 'hello',
 1. 字符串
 
 ```javascript
-模板字符串：
+// 模板字符串：
 var name = 'hello';
 var age = 18;
 var info = `my name is ${name}, age is ${age}`;
 
-字符串长度：
+// 字符串长度：
 var name = 'hello';
 var length = name.length;
 
-大小写转换：
+// 大小写转换：
 var name = 'hello';
 var upperName = name.toUpperCase();
 var lowerName = name.toLowerCase();
 
-获取索引：
+// 获取索引：
 var name = 'hello';
 var index = name.indexOf('l');
 
-获取子串：
+// 获取子串：
 var name = 'hello';
 var subName = name.substring(1, 3); // [1, 3)
 ```
@@ -86,73 +87,73 @@ var subName = name.substring(1, 3); // [1, 3)
    Array可以存放任意数据类型。
 
 ```javascript
-示例：
+// 示例：
 var arr = [1, 2, 3, 'hello', true, null, undefined];
 
-获取数组长度：
+// 获取数组长度：
 var arr = [1, 2, 3, 'hello', true, null, undefined];
 var length = arr.length;
 
-如果给 arr.length赋值，数组长度会改变。如果赋值过小，数组会丢失，如果赋值过大，数组会扩展。
+// 如果给 arr.length赋值，数组长度会改变。如果赋值过小，数组会丢失，如果赋值过大，数组会扩展。
 
-获取数组元素：
+// 获取数组元素：
 var arr = [1, 2, 3, 'hello', true, null, undefined];
 var element = arr[0];
 var element = arr[arr.length - 1];
 
-获取下标索引：
+// 获取下标索引：
 var arr = [1, 2, 3, 'hello', true, null, undefined];
 var index = arr.indexOf(3);
 
-添加元素：
+// 添加元素：
 var arr = [1, 2, 3, 'hello', true, null, undefined];
 arr.push(4); // 添加元素到尾部
 arr.pop(); // 删除末尾的一个元素
 arr.unshift('a', 'b'); // 添加元素到头部
 arr.shift(); // 删除头部一个元素
 
-截取数组（返回一个新的数组 类似于String中的substring）：
+// 截取数组（返回一个新的数组 类似于String中的substring）：
 var arr = [1, 2, 3, 'hello', true, null, undefined];
 var newArr = arr.slice(1, 3);
 var newArr = arr.slice(1);
 
-数组排序：
+// 数组排序：
 var arr = ['A', 'B', 'C'];
 arr.sort();
 
-元素翻转：
+// 元素翻转：
 var arr = ['A', 'B', 'C'];
 arr.reverse();
 
-删除数组元素：
+// 删除数组元素：
 var arr = [1, 2, 3, 'hello', true, null, undefined];
 arr.splice(1, 2);
 arr.splice(1, 0, 'a', 'b');
 
-拼接数组（会返回一个新的数组 不改变原数组）：
+// 拼接数组（会返回一个新的数组 不改变原数组）：
 var arr = [1, 2, 3];
 var newArr = arr.concat([4, 5, 6]);
 
-连接符（使用特定的字符串符接数组元素）：
+// 连接符（使用特定的字符串符接数组元素）：
 var arr = [1, 2, 3];
 var str = arr.join('-');
 
-多维数组：
+// 多维数组：
 var arr = [
     [1, 2, 3],
     [4, 5, 6],
     [7, 8, 9]
 ]
 
-获取多维数组元素：
+// 获取多维数组元素：
 var element = arr[1][1]; // 5
 
-遍历数组：
+// 遍历数组：
 for (var i = 0; i < arr.length; i++) {
     console.log(arr[i]);
 }
 
-遍历多维数组：
+// 遍历多维数组：
 for (var i = 0; i < arr.length; i++) {
     for (var j = 0; j < arr[i].length; j++) {
         console.log(arr[i][j]);
@@ -162,38 +163,38 @@ for (var i = 0; i < arr.length; i++) {
 
 3. 对象
 
-**JavaScript中键都是字符串，值可以是任意类型**
+**JavaScript 对象的属性键是字符串或 Symbol，属性值可以是任意类型。**
 
 ```javascript
-示例：
+// 示例：
 var person = {name: 'hello',
               age: 18
               };
 
-获取对象属性：
+// 获取对象属性：
 person.name // hello
 person['name'] // hello
 person.haha // undefined 使用键值访问属性时，如果键值不存在，会返回undefined
 
-添加对象属性：
+// 添加对象属性：
 person.haha = 'haha';
 person['haha'] = 'haha';
 
-删除对象属性：
+// 删除对象属性：
 delete person.name;
 delete person['name'];
 
-遍历对象：
+// 遍历对象：
 for (var key in person) {
     console.log(key, person[key]);
 }
 
-判断属性是否存在：
+// 判断属性是否存在：
 if ('name' in person) {
     console.log('存在');
 }
 
-判断这个属性是否是对象自身拥有的属性：
+// 判断这个属性是否是对象自身拥有的属性：
 if (person.hasOwnProperty('name')) {
     console.log('是');
 }
@@ -201,10 +202,10 @@ if (person.hasOwnProperty('name')) {
 
 4. Map和Set
 
-Map和Set都是ES6新增的集合类型。Map和对象最大的区别是：对象键只能是字符串，Map键可以是任意类型。Set集合中不能有重复的元素，Map集合中可以有重复的元素。
+Map 和 Set 都是 ES6 新增的集合类型。对象的属性键只能是字符串或 Symbol，而 Map 的键可以是任意值；同一个 Map 中键不能重复，重复设置同一键会覆盖原值，但不同键对应的值可以重复。Set 中的值不能重复。
 
 ```javascript
-1. Map // 键值对
+// 1. Map // 键值对
 var map = new Map();
 map.set('name', 'hello');
 map.set(1, 'world');
@@ -212,24 +213,24 @@ map.set(true, 'haha');
 map.set(null, 'null');
 map.set(undefined, 'undefined');
 
-通过key获取value：
-map.set('hello'); // hello
+// 通过 key 获取 value：
+map.get('name'); // hello
 
-设置键值对：
+// 设置键值对：
 map.set("name", "Tom");
 
-2. Set // 无序不重复集合
+// 2. Set // 按插入顺序迭代且值不重复的集合
 var set = new Set(); // set可以去重
 
-添加元素：
+// 添加元素：
 set.add('hello');
 set.add(1);
 
-删除元素：
+// 删除元素：
 set.delete('hello');
 set.delete(1);
 
-是否包含某个元素：
+// 是否包含某个元素：
 if (set.has('hello')) {
     console.log('包含');
 }
@@ -264,7 +265,7 @@ for (var i = 0; i < 10; i++) {
     console.log(i);
 }
 
-foreach循环：
+// foreach循环：
 var arr = [1, 2, 3, 4, 5];
 arr.forEach(function (element, index) {
     /**
@@ -274,16 +275,17 @@ arr.forEach(function (element, index) {
     console.log(element, index);
 })
 
-for-in循环：
+// for-in循环：
 var person = {
     name: 'hello',
     age: 18
         };
 for (var key in person) {
-    // for-in是下标 for-of是值 迭代尽量都用for-of
-        console.log(key, person[key]);
-        // key为索引，person[key]为值
-    }
+  if (Object.hasOwn(person, key)) {
+    // key 是可枚举的字符串属性键，person[key] 是对应的属性值
+    console.log(key, person[key]);
+  }
+}
 
 
 switch (age) {
@@ -302,57 +304,61 @@ switch (age) {
 ### Iterator和 Generator
 
 ```javascript
-1. Iterator // 迭代器
+// 1. Iterator // 迭代器
 var arr = [1, 2, 3];
 var iterator = arr[Symbol.iterator]();
 ```
 
+> Generator 部分待补充。
+
 ## 函数
 
-JavaScript可以传任意个参数，也可以忽略参数。`arguments`对象可以获取函数传递进来的参数。
+调用函数时，实参数量可以多于或少于形参数量。非箭头函数可以通过自己的 `arguments` 对象访问本次调用传入的实参；箭头函数没有自己的 `arguments`，通常使用剩余参数（`...args`）接收实参。
 
 ```javascript
-1. 定义函数
-第一种方式（函数声明）：
+// 1. 定义函数
+// 第一种方式（函数声明）：
 sayHello(); // 可以在这里调用！因为函数声明会被"提升"到顶部。
 
 function sayHello() {
     console.log("你好！");
 }
 
-最重要的特性是"提升"。可以在函数定义之前就调用它，因为它在代码运行前就被加载到内存中了。
+// 最重要的特性是"提升"。可以在函数定义之前就调用它，因为它在代码运行前就被加载到内存中了。
 
-第二种方式（函数表达式）：
+// 第二种方式（函数表达式）：
 // sayHi(); // 报错！因为这时候代码还没执行到赋值的那一行。
 
 const sayHi = function() {
     console.log("嗨！");
 };
 
-本质上是把一个匿名函数赋值给了一个变量。它没有被提升，必须先定义后使用。现代开发更推荐这种写法，因为它能强制开发者按顺序写代码，减少逻辑混乱。
+// 函数表达式会在初始化表达式执行时创建函数值并赋给变量。变量绑定本身仍遵循其声明方式的规则：`const`、`let` 在声明前处于 TDZ，`var` 则会提前初始化为 `undefined`。函数声明和函数表达式各有适用场景，不能笼统地说函数表达式更现代。
 
-2. 箭头函数 (ES6 现代写法)
-这是 ES6 (2015年) 引入的革命性语法，也是你现在最应该掌握的写法。它让代码变得极其简洁。
+// 2. 箭头函数 (ES6 现代写法)
+// 这是 ES6 (2015年) 引入的革命性语法，也是你现在最应该掌握的写法。它让代码变得极其简洁。
 
-基本写法:
-const add = (a, b) => {
-    return a + b;
+// 基本写法:
+const addWithBlock = (a, b) => {
+  return a + b;
 };
 
-简写规则 (非常常用):
-如果只有一行代码，可以省略大括号 {} 和 return:
-const add = (a, b) => a + b; // 自动返回 a + b
-如果只有一个参数，可以省略小括号 ():
+// 简写规则 (非常常用):
+// 当函数体是单个表达式时，可以省略大括号和 return，表达式的值会被隐式返回；能否省略与代码占几行无关：
+const addConcise = (a, b) => a + b; // 自动返回 a + b
+// 如果只有一个形式参数且它是简单标识符，可以省略小括号：
 const double = n => n * 2;
-注意: 箭头函数不仅仅是语法糖，它在处理 this 指向问题时和普通函数完全不同（如果只是普通计算或处理数据，优先用箭头函数）
+// 注意: 箭头函数不仅仅是语法糖，它在处理 this 指向问题时和普通函数完全不同（如果只是普通计算或处理数据，优先用箭头函数）
 ```
 
 ### 变量的作用域
 
-JavaScript中变量的作用域是函数作用域。函数内部定义的变量，只在函数内部有效。函数外部定义的变量，可以在函数内部访问。函数内部定义的变量，会覆盖函数外部定义的变量。尽量用`let`， 避免使用`var`。常量：`const`，不能被修改。
+JavaScript 采用词法作用域。`var` 具有函数作用域或全局作用域；`let`、`const` 和 `class` 具有块级作用域。内层作用域可以访问外层绑定，同名的内层声明只会在自己的作用域内遮蔽外层绑定。`const` 禁止重新赋值，但不表示对象或数组的内容不可修改。
 
-- 全局作用域: 在函数外部声明的变量。在代码的任何地方都能访问到。
-- 函数作用域 (局部): 在函数内部声明的变量。只能在函数内部访问，外面看不见。
+- 全局作用域：在脚本的全局环境中声明的绑定。
+- 模块作用域：ES 模块顶层声明只属于当前模块，不会自动成为全局变量。
+- 函数作用域：函数内部由 `var` 或函数声明等创建的绑定。
+- 块级作用域：由 `{}` 块以及 `let`、`const`、`class` 等声明形成的作用域。
 
 ```javascript
 const globalVar = "我是全局的"; // 外部变量
@@ -368,43 +374,42 @@ console.log(localVar); // 报错！外面访问不到内部的变量
 ### 闭包
 
 ```javascript
-function outer() {
-    let i = 1
-    function fn() {
-        console.log(i)
-    }
-return fn
+function outerWithNamedInner() {
+  let i = 1;
+  function fn() {
+    console.log(i);
+  }
+  return fn;
 }
-const fun = outer()
-fun() // 1
-// 外层函数使用内部函数的变量
+const namedClosure = outerWithNamedInner();
+namedClosure(); // 1
+// 内部函数访问并保留外层函数中的变量
 
-简写形式：
-function outer() {
-    let i = 1
-    return function () {
-        console.log(i)
-    }
+// 简写形式：
+function outerWithAnonymousInner() {
+  let i = 1;
+  return function () {
+    console.log(i);
+  };
 }
 
-const fun = outer()
-fun() // 调用
-// 函数内部使用外部的变量
+const anonymousClosure = outerWithAnonymousInner();
+anonymousClosure(); // 1
 ```
 
 ### 变量和函数提升
 
-函数声明和变量声明（var）都会被提升到函数作用域的顶部。变量声明会被提升为 undefined，函数声明会被提升为函数。
+函数声明和 `var` 声明都会在执行作用域代码前被实例化，但两者的初始化行为不同。`var` 绑定会被初始化为 `undefined`；函数声明通常会直接初始化为对应的函数对象。
 
 总结：
 
-1. 变量在未声明即被访问时会报语法错误
-2. 变量在声明之前即被访问，变量的值为 `undefined`
-3. `let` 声明的变量不存在变量提升，推荐使用 `let`
-4. 变量提升出现在相同作用域当中
-5. 实际开发中推荐先声明再访问变量
+1. 访问无法解析的标识符通常会抛出 `ReferenceError`，不是语法错误
+2. `var` 绑定在声明语句执行前已经存在并被初始化为 `undefined`
+3. `let` 和 `const` 绑定也会在作用域实例化时创建，但在声明语句执行前处于暂时性死区（TDZ），访问会抛出 `ReferenceError`
+4. 函数声明通常可以在同一作用域内先调用后声明；块和模块中的具体行为还受相应语义约束
+5. 实际开发中仍建议先声明再访问，以减少歧义
 
-> 注：关于变量提升的原理分析会涉及较为复杂的词法分析等知识，而开发中使用 `let` 可以轻松规避变量的提升，因此在此不做过多的探讨，有兴趣可[查阅资料](https://segmentfault.com/a/1190000013915935)。
+> 注：关于变量提升的原理分析会涉及较为复杂的执行上下文和环境记录等知识。`let` 和 `const` 的绑定也会在作用域实例化时创建，但在声明语句执行前处于暂时性死区（TDZ），不能用“规避变量提升”来描述。有兴趣可查阅资料。
 
 ```javascript
 // 调用函数
@@ -414,23 +419,23 @@ function foo() {
   console.log("声明之前即被调用...");
 }
 
-// 不存在提升现象
-bar(); // 错误
+// `var bar` 的声明会提前初始化为 undefined，但后面的函数赋值不会提前执行
+bar(); // TypeError：此时 bar 不是函数
 var bar = function () {
-  console.log("函数表达式不存在提升现象...");
+  console.log("函数表达式在赋值语句执行后才可调用");
 };
 ```
 
 总结：
 
 1. 函数提升能够使函数的声明调用更灵活
-2. 函数表达式不存在提升的现象
+2. 函数表达式的函数值不会随变量声明一起提前赋值；声明前访问的结果取决于变量使用 `var`、`let` 还是 `const`
 3. 函数提升出现在相同作用域当中
 
 ### 可变参数
 
 ```javascript
-// 求生函数，计算所有参数的和
+// 求和函数，计算所有参数的和
 function sum() {
   // console.log(arguments)
   let s = 0;
@@ -441,7 +446,7 @@ function sum() {
 }
 // 调用求和函数
 sum(5, 10); // 两个参数
-sum(1, 2, 4); // 两个参数
+sum(1, 2, 4); // 三个实参
 ```
 
 得到一个伪数组
@@ -457,24 +462,24 @@ function config(baseURL, ...other) {
 config("http://baidu.com", "get", "json");
 ```
 
-1. `...` 是语法符号，置于最末函数形参之前，用于获取多余的实参
+1. `...` 用于定义剩余参数；整个剩余参数必须位于形参列表的最后一个位置，并把尚未由前面形参匹配的实参收集为一个数组
 2. 借助 `...` 获取的剩余实参，是个真数组
 
 ### Date
 
 ```javascript
 var date = new Date();
-data.getFullYear(); // 获取年份
-data.getMonth(); // 获取月份
-data.getDate(); // 获取日期
-data.getDay(); // 获取星期几
-data.getHours(); // 获取小时
-data.getTime(); // 获取时间戳
+date.getFullYear(); // 获取本地年份
+date.getMonth(); // 获取本地月份，范围为 0～11
+date.getDate(); // 获取本月中的日期，范围为 1～31
+date.getDay(); // 获取星期，范围为 0～6，0 表示星期日
+date.getHours(); // 获取本地小时
+date.getTime(); // 获取自 Unix 纪元以来的毫秒数
 ```
 
 ### JSON
 
-在JavaScript中一切都是对象，任何JavaScript支持的类型都可以转为JSON。`JSON.stringify()`可以将对象转为JSON字符串。`JSON.parse()`可以将JSON字符串转为对象。
+JavaScript 的值包括原始值和对象，并非一切都是对象。JSON 能表示对象、数组、字符串、有限数字、布尔值和 `null`；`undefined`、函数和 Symbol 不能直接表示，BigInt 默认也不能被 `JSON.stringify()` 序列化。`JSON.stringify()` 用于生成可序列化值的 JSON 文本，`JSON.parse()` 则把合法 JSON 文本解析为相应的 JavaScript 值，结果不一定是对象。
 
 ### 解构赋值
 
@@ -497,7 +502,7 @@ console.log(c); // 3
 
 总结：
 
-1. 赋值运算符 `=` 左侧的 `[]` 用于批量声明变量，右侧数组的单元值将被赋值给左侧的变量
+1. `[]` 表示数组解构模式；与 `let`、`const` 或 `var` 一起使用时可声明并初始化多个变量，单独出现在赋值表达式左侧时则给已有变量赋值。
 2. 变量的顺序对应数组单元值的位置依次进行赋值操作
 3. 变量的数量大于单元值数量时，多余的变量将被赋值为 `undefined`
 4. 变量的数量小于单元值数量时，可以通过 `...` 获取剩余单元值，但只能置于最末位
@@ -516,7 +521,7 @@ const user = {
   age: 18,
 };
 // 批量声明变量 name age
-// 同时将数组单元值 小明  18 依次赋值给变量 name  age
+// 按属性名从 user 中取得 name 和 age 属性值，并分别赋给同名变量
 const { name, age } = user;
 
 console.log(name); // 小明
@@ -551,44 +556,38 @@ console.log(age); // 18
       ],
     };
 
-    // 需求1： 请将以上msg对象  采用对象解构的方式 只选出 data 方面后面使用渲染页面
+    // 需求1：从 msg 中解构出 data
     const { data } = msg;
     console.log(data);
-    // 需求2： 上面msg是后台传递过来的数据，我们需要把data选出当做参数传递给 函数
-    const { data } = msg;
-    // msg 虽然很多属性，但是我们利用解构只要 data值
+
+    // 需求2：在函数参数中直接解构 data
     function render({ data }) {
-      const { data } = arr;
-      // 我们只要 data 数据
-      // 内部处理
       console.log(data);
     }
     render(msg);
 
-    // 需求3， 为了防止msg里面的data名字混淆，要求渲染函数里面的数据名改为 myData
-    function render({ data: myData }) {
-      // 要求将 获取过来的 data数据 更名为 myData
-      // 内部处理
+    // 需求3：将解构出的 data 重命名为 myData
+    function renderWithAlias({ data: myData }) {
       console.log(myData);
     }
-    render(msg);
+    renderWithAlias(msg);
   </script>
 </body>
 ```
 
 总结：
 
-1. 赋值运算符 `=` 左侧的 `{}` 用于批量声明变量，右侧对象的属性值将被赋值给左侧的变量
+1. `{}` 表示对象解构模式；与 `let`、`const` 或 `var` 一起使用时可声明并初始化多个变量，也可以在赋值表达式中给已有变量赋值。
 2. 对象属性的值将被赋值给与属性名相同的变量
 3. 对象中找不到与变量名一致的属性时变量值为 `undefined`
-4. 允许初始化变量的默认值，属性不存在或单元值为 `undefined` 时默认值才会生效
+4. 允许为解构变量设置默认值；当对应属性不存在或属性值为 `undefined` 时，默认值才会生效
 
 注：支持多维解构赋值
 
 ## 面向对象编程
 
-- 面向对象原型模式：创建对象实例时，会先创建一个原型对象，然后基于原型对象创建对象实例。
-- 面向对象class模式：创建对象实例时，会先创建一个类，然后基于类创建对象实例。（ES6开始支持）
+- JavaScript 采用基于原型的对象模型。通过 `new Constructor()` 创建实例时，实例的内部 `[[Prototype]]` 通常会被设为 `Constructor.prototype`。
+- `class` 是 ES2015 引入的语法，仍建立在原型与原型链机制之上，并不是独立于原型的另一套对象模型。
 
 ```javascript
 // 类
@@ -618,7 +617,7 @@ class Student extends Person {
 ```
 
 ```javascript
-示例：
+// 示例：
 const user = {
     // 属性
     name: "张三",
@@ -636,21 +635,22 @@ const user = {
 console.log(user.name); // 访问属性：张三
 user.sayHi();           // 调用方法：大家好，我是张三
 
-对象的操作：
-增/改：user.gender = "男";
-删：delete user.age;
-查：user.age 或者 user["age"] (注意后者是字符串索引，很灵活)。
+// 对象的操作：
+user.gender = "男"; // 新增或修改属性
+delete user.age; // 删除属性
+user.age; // 使用点号访问属性
+user["age"]; // 使用方括号访问属性
 ```
 
-> 原型链：对象实例会创建一个**proto**属性，这个属性指向对象实例的构造函数的原型对象。
+> 原型链：对象通过内部 `[[Prototype]]` 链接关联到另一个对象。由 `new Constructor()` 创建的实例，其 `[[Prototype]]` 通常指向 `Constructor.prototype`；可使用 `Object.getPrototypeOf()` 读取。`__proto__` 是历史访问器，不是每个实例都会新建的自有属性。
 > ![原型链](/assert/js-image/原型链.png)
 
 ### this
 
-一句话定义：`this` 指向“当前调用这个函数的那个对象”。它不取决于函数在哪里定义，而取决于谁在调用它。
+`this` 的值取决于函数类型和调用方式：普通函数会根据直接调用、方法调用、构造调用以及 `call`、`apply`、`bind` 等方式确定 `this`；箭头函数没有自己的 `this`，而是沿词法环境取得外层 `this`。因此不能统一概括为“谁调用就指向谁”。
 
-1. 在对象方法中 (最常见)：
-   `this` 指向对象本身。
+1. 以对象方法形式调用（最常见）：
+   当执行 `person.eat()` 时，`eat` 内部的 `this` 指向调用表达式中点号左侧的 `person`。函数是否存放在对象属性中并不能单独决定 `this`；若将它取出后直接调用，`this` 会按直接调用规则确定。
 
 ```javascript
 const person = {
@@ -663,13 +663,13 @@ person.eat(); // 输出：李四 在吃饭
 ```
 
 2. 在普通函数中：
-   如果不是对象的方法，而是普通调用，`this` 在严格模式下是 `undefined`，非严格模式下指向**全局对象 (window)**。
+   如果普通函数被直接调用，严格模式下 `this` 为 `undefined`；非严格模式下会使用当前运行环境的全局 `this` 值。浏览器经典脚本中通常是 `window`，但 ES 模块始终处于严格模式，其他运行环境也不一定存在 `window`。
 
 ```javascript
 function test() {
   console.log(this);
 }
-test(); // 也就是 window.test()，所以 this 指向 window
+test(); // 直接调用；this 的值取决于函数是否处于严格模式以及运行环境
 ```
 
 3. 在箭头函数中 (关键区别)：
@@ -680,20 +680,22 @@ const obj = {
   name: "王五",
   regularFunc: function () {
     setTimeout(function () {
-      console.log(this.name);
+      console.log(this); // 不会继承 regularFunc 的 this；具体值由宿主环境的调用方式决定
     }, 100);
-  }, // undefined (丢失了 this)
+  },
   arrowFunc: function () {
     setTimeout(() => {
-      console.log(this.name);
+      console.log(this.name); // 当以 obj.arrowFunc() 调用时输出“王五”
     }, 100);
-  }, // 王五 (继承了外层的 this)
+  },
 };
-// 这一点非常关键，在定时器和事件回调中极常遇到
+
+obj.regularFunc();
+obj.arrowFunc();
 ```
 
-::: warning `this`关键字的用法(第1点)
-可以把它当做Java中的this使用 `this`指向的是当前对象(使用它的人)。在JavaScript中可以改变`this`指向。
+::: warning JavaScript 的 `this` 不能直接类比 Java
+普通函数的 `this` 由调用方式决定；箭头函数不创建自己的 `this`，而是从外层词法环境读取。`call`、`apply` 和 `bind` 可以为普通函数显式提供 `this`。
 :::
 ![this](/assert/js-image/this.png)
 
@@ -745,7 +747,7 @@ const obj = {
 
 #### apply
 
-使用 `call` 方法**调用函数**，同时指定函数中 `this` 的值，使用方法如下代码所示：
+使用 `apply` 方法调用函数，同时指定函数中 `this` 的值，使用方法如下代码所示：
 
 ```html
 <script>
@@ -782,7 +784,7 @@ const obj = {
 
 1. `apply` 方法能够在调用函数的同时指定 `this` 的值
 2. 使用 `apply` 方法调用函数时，第1个参数为 `this` 指定的值
-3. `apply` 方法第2个参数为数组，数组的单元值依次自动传入函数做为函数的参数
+3. `apply` 方法的第 2 个参数可以是数组或类数组对象，也可以是 `null` 或 `undefined`；其中的元素会按顺序作为函数实参传入
 
 #### bind
 
@@ -805,13 +807,15 @@ const obj = {
 </script>
 ```
 
-注：`bind` 方法创建新的函数，与原函数的唯一的变化是改变了 `this` 的值。
+注：`bind()` 会创建一个新的绑定函数，可以预先绑定 `this` 和部分参数；新函数的 `name`、`length` 等属性以及作为构造函数调用时的行为也可能与原函数不同，因此变化不只限于 `this`。
 
 ## 异步编程
 
-JavaScript 是**单线程**的，意味着它同一时间只能做一件事。如果它去下载一张图片（耗时5秒），如果不处理异步，网页就会卡死5秒钟，用户什么都点不了。
+浏览器主线程上的 JavaScript 代码通常按任务逐段执行，同一时刻只执行其中一段；但网络请求和 Worker 等可以在其他执行环境中并行工作，因此不能把整个浏览器概括为同一时间只能做一件事。
 
-为了解决这个问题，JS 采用了**“事件循环”** 机制，把任务分为：**同步任务**（主线程，马上做）和 **异步任务**（挂起，做完再做）。
+浏览器下载图片通常由网络层异步处理，不会因为下载本身阻塞 JavaScript 主线程；长时间运行的同步 JavaScript 才会占用主线程并导致页面暂时无法响应。
+
+浏览器等宿主环境通过事件循环协调任务队列与微任务队列：当前任务执行结束后会进行微任务检查点，再由事件循环选择后续任务执行。异步 API 的等待工作通常由宿主环境处理，完成后再安排相应回调，不能简单把队列中的工作分成“同步任务”和“异步任务”两类。
 
 #### 1. 定时器
 
@@ -821,13 +825,13 @@ JavaScript 是**单线程**的，意味着它同一时间只能做一件事。�
 console.log("1. 开始");
 
 setTimeout(() => {
-  console.log("2. 这里是异步代码，2秒后才执行");
+  console.log("2. 这里是异步代码，至少约 2 秒后才有机会执行");
 }, 2000);
 
 console.log("3. 结束");
 
 // 输出顺序：1 -> 3 -> 2
-// 解释：JS 不会傻傻等 2 秒，而是先把 setTimeout 放一边（宏任务），继续执行下面的代码，等时间到了再回来执行。
+// 解释：setTimeout 会在延迟时间到达后安排回调任务；回调还必须等待当前任务及此前排队的任务完成，因此实际执行时间可能晚于 2 秒。
 ```
 
 #### 2. Promise（重要）
@@ -835,9 +839,9 @@ console.log("3. 结束");
 以前为了处理异步，我们会把函数套在函数里（回调函数）。如果步骤一多，代码就会变成金字塔形状（回调地狱），难以维护。Promise 就是为了解决这个问题诞生的。
 
 - **三种状态**：
-  - `Pending` (进行中)
-  - `Resolved` (已成功)
-  - `Rejected` (已失败)
+  - `pending`（待定）
+  - `fulfilled`（已兑现）
+  - `rejected`（已拒绝）
 
 - **基本用法**：
   Promise 是一个承诺：我可能会成功，也可能会失败，稍后告诉你结果。
@@ -871,10 +875,10 @@ console.log("3. 结束");
 - **链式调用**：
   这是 Promise 最强大的地方。如果你有两个任务，必须按顺序做完（比如：先拿到用户ID，再去拿用户详情），就需要链式调用。
 
-**规则**：`.then()` 里面返回一个新的 Promise，下一个 `.then()` 就会等待这个新 Promise 完成后再执行。
+**规则**：每次调用 `.then()` 都会返回一个新的 Promise。处理函数可以返回普通值、Promise 或 thenable；返回结果会被用于解析这个新 Promise，后续链式处理会等待它确定状态后再继续。
 
 ```javascript
-模拟登录：
+// 模拟登录：
 function step1() {
     return new Promise((resolve) => {
         setTimeout(() => resolve("用户ID: 888"), 1000);
@@ -910,7 +914,7 @@ step1()
 
 - **规则**：
   1.  `async` 写在函数定义前面，表示这是个异步函数。
-  2.  `await` 只能在 `async` 函数内部使用，表示“**等待**”这个 Promise 返回结果。
+  2.  `await` 可以在 `async` 函数内部使用，也可以在支持顶层 `await` 的 ES 模块顶层使用。它可以等待 Promise、thenable 或普通值；兑现时产生结果，拒绝时抛出异常。
   3.  等待期间，JS 引擎可以去处理别的事情（不阻塞）。
 
 ```javascript
@@ -918,8 +922,8 @@ async function handleData() {
   console.log("开始获取数据...");
 
   try {
-    // await 会暂停函数执行，直到 Promise 返回结果
-    // 这看起来像同步代码，但其实它是非阻塞的
+    // await 会暂停当前 async 函数，直到操作数对应的 Promise 确定状态
+    // 兑现时得到值，拒绝时抛出异常；等待期间不会阻塞主线程
     const data = await mockRequest();
     console.log("拿到了数据 -> " + data);
 
@@ -957,7 +961,7 @@ const items = document.querySelectorAll(".item");
 const firstP = document.querySelector("p");
 ```
 
-#### 1.2 传统 getElement 系列 (效率稍高，但功能单一)
+#### 1.2 传统 getElement 系列（专用查询 API）
 
 - **`document.getElementById(id)`**: 通过 ID 获取元素。
 - **`document.getElementsByClassName(className)`**: 通过类名获取（返回 HTMLCollection，**实时更新**）。
@@ -974,7 +978,7 @@ const firstP = document.querySelector("p");
 #### 2.1 修改文本内容
 
 - **`element.textContent`**: 设置或获取元素及其后代的**纯文本**内容（不解析 HTML 标签）。
-- **`element.innerText`**: 类似于 `textContent`，但会触发重排，且受 CSS 样式（如 `display: none`）影响。**推荐使用 `textContent`**。
+- **`element.innerText`**: 表示元素实际渲染出来的文本，受 CSS 样式影响；读取它时可能为了得到最新渲染结果而触发布局计算。如果不需要考虑渲染样式，通常可使用 `textContent`。
 - **`element.innerHTML`**: 设置或获取元素的 **HTML 内容**（解析标签）。**注意：存在 XSS 安全风险，不要插入不可信的用户输入。**
 
 ```javascript
@@ -1010,6 +1014,7 @@ div.classList.contains("open"); // 检查是否存在
 ```javascript
 const link = document.querySelector("a");
 link.setAttribute("href", "https://www.example.com");
+link.setAttribute("target", "_blank");
 link.getAttribute("target"); // 返回 "_blank"
 ```
 
@@ -1103,12 +1108,12 @@ btn.addEventListener("click", function (event) {
 
 #### 5.2 事件冒泡与捕获
 
-- **冒泡**: 事件从目标元素向上传递到 window。
-- **捕获**: 事件从 window 向下传递到目标元素（`addEventListener` 第三个参数设为 `true` 开启）。
+- **捕获阶段**：事件沿传播路径从外层祖先向目标元素传递，可通过 `{ capture: true }` 注册捕获阶段监听器。
+- **冒泡阶段**：只有 `bubbles` 为 `true` 的事件才会从目标元素沿传播路径向祖先传递；并非所有事件都会冒泡或到达 `window`。
 
 #### 5.3 事件委托
 
-**非常重要**。利用事件冒泡机制，将事件监听器加在父元素上，而不是每个子元素上。这大大提高了性能，特别是对于动态添加的元素。
+**非常重要**。利用事件冒泡机制，将事件监听器加在父元素上，而不是每个子元素上。事件委托可以减少监听器数量，并自动覆盖后来添加的后代元素；是否带来明显性能收益取决于具体场景。
 
 ```javascript
 // 场景：给 ul 里的 10000 个 li 绑定点击事件
@@ -1117,9 +1122,9 @@ btn.addEventListener("click", function (event) {
 
 // ✅ 正确做法：只给 ul 绑定
 ul.addEventListener("click", (e) => {
-  if (e.target.tagName === "LI") {
-    // 判断点击的是否是 li
-    console.log("你点击了:", e.target.textContent);
+  const li = e.target.closest("li");
+  if (li && ul.contains(li)) {
+    console.log("你点击了:", li.textContent);
   }
 });
 ```
@@ -1128,20 +1133,20 @@ ul.addEventListener("click", (e) => {
 
 ### 6. 性能优化
 
-DOM 操作是昂贵的（因为它会导致浏览器重排 Reflow 和重绘 Repaint），以下技巧至关重要：
+DOM 读写可能触发样式重新计算、布局、绘制或合成，但并非每次 DOM 操作都会同时导致重排和重绘。应重点减少不必要的重复读写，并通过性能工具确认实际瓶颈。
 
 1.  **减少 DOM 操作次数**: 尽量合并多次修改。
     - **批量修改样式**: 不要频繁修改 `style.color`，而是修改 `className` 或直接操作 `style.cssText`。
 2.  **使用 DocumentFragment (文档片段)**:
-    如果要在循环中插入大量节点，先将它们插入到内存中的 `DocumentFragment`，最后一次性插入到 DOM。
+    `DocumentFragment` 不属于当前活动文档树，可以先在其中组织节点，再一次性将其子节点移动到目标元素中。这种写法有助于组织批量插入代码，但性能收益和实际布局次数不能一概而论。
     ```javascript
     const fragment = document.createDocumentFragment();
     for (let i = 0; i < 1000; i++) {
       const li = document.createElement("li");
       li.textContent = `Item ${i}`;
-      fragment.appendChild(li); // 此时还在内存中，不触发重排
+      fragment.appendChild(li); // fragment 尚未连接到活动文档树
     }
-    ul.appendChild(fragment); // 只触发一次重排
+    ul.appendChild(fragment); // 将 fragment 的子节点移动到 ul，fragment 随后变为空
     ```
 3.  **避免 `layout thrashing` (布局抖动)**:
     不要交替读写 DOM。
@@ -1151,13 +1156,15 @@ DOM 操作是昂贵的（因为它会导致浏览器重排 Reflow 和重绘 Repa
 ### 操作表单
 
 ```javascript
-// 1. 对于单选框 多选框 复选框等等xxx.value只能获取固定的值
-var element = document.getElementById("name");
-element.value; // 获取值
-element.checked; // 获取复选框是否选中(返回值为true/false)
+// 对于 checkbox 和 radio，value 表示提交值，checked 表示当前是否选中
+const checkbox = document.querySelector('input[type="checkbox"]');
+checkbox.value; // 获取提交值；未设置 value 时默认值通常为 "on"
+checkbox.checked; // 获取当前选中状态，返回布尔值
 
-// 2. 提交表单（加密）
+// 2. 提交表单
 ```
+
+> 表单提交与传输安全部分待补充。
 
 ## 模块化
 
@@ -1222,7 +1229,7 @@ export const subtract = (a, b) => a - b;
 **文件：`main.js`**
 
 ```javascript
-// 导入时，名字必须和导出时的一模一样！用大括号包裹
+// 命名导入默认使用导出名；如需不同的本地名称，可以使用 as 指定别名
 import { add, subtract } from "./mathUtils.js";
 
 console.log(add(1, 2));
@@ -1263,7 +1270,7 @@ console.log(allMath.subtract(5, 3));
 - **CommonJS** (Node.js 环境):
   - 使用 `require()` 导入。
   - 使用 `module.exports` 导出。
-  - _注：Node.js 现在也在慢慢转向支持 ES6 模块。_
+  - _注：Node.js 同时支持 CommonJS 和 ECMAScript Modules，并提供两者之间的互操作机制。_
 - **AMD / CMD** (RequireJS 时代):
   - 这是更古老的前端浏览器方案，现在基本很少见了。
 
@@ -1278,40 +1285,39 @@ console.log(allMath.subtract(5, 3));
     <script type="module" src="main.js"></script>
     ```
 
-    - 如果不加 `type="module"`，浏览器会报错，说 `import` 语句不存在。
-    - 加了之后，这个 JS 文件就会自动变成**严格模式**，且支持延迟加载（`defer`）。
+    - 如果把含有静态 `import` 声明的文件当作经典脚本加载，浏览器会抛出语法错误，例如 “Cannot use import statement outside a module”。
+    - 模块脚本会自动采用**严格模式**，并默认延后到文档解析完成后执行；`defer` 属性对模块脚本没有额外作用。
 
 2.  **浏览器兼容性**
-    现代浏览器都支持 ES6 模块，但如果你需要兼容非常老的浏览器（如 IE11），你需要配合打包工具（如 Webpack）把模块化代码编译成浏览器能懂的旧代码。
+    现代浏览器普遍支持 ES Modules。若需要兼容不支持模块或现代语法的旧浏览器，通常需要使用打包工具处理模块依赖，并结合 Babel 等转译工具及必要的 polyfill 生成目标环境可运行的代码。
 
 ## 防抖与节流
 
 1. 防抖（debounce）  
-   所谓防抖，就是指触发事件后在 n 秒内函数只能执行一次，如果在 n 秒内又触发了事件，则会重新计算函数执行时间
+防抖会在函数被调用后等待一段时间；如果等待期间再次调用，就重新计时。以默认的尾缘执行方式为例，只有连续调用停止并经过等待时间后，目标函数才会执行。
 
-- lodash库中有 `debounce` 函数来实现防抖功能
+- Lodash 提供 `_.debounce(func, wait, options)` 创建防抖函数，`wait` 的单位是毫秒。
 
 ```javascript
-box.addEventListener("mousemove", __debounce(mousemove, 500));
+box.addEventListener("mousemove", _.debounce(mousemove, 500));
 ```
 
 2. 节流（throttle）  
-   所谓节流，就是指连续触发事件但是在 n 秒中只执行一次函数
+节流会限制目标函数在连续调用期间的执行频率，使其在指定等待时间内最多按配置执行一次；Lodash 还可以配置是否在等待区间的开始或结束执行。
 
-- lodash库中有 `throttle` 函数来实现节流功能
-  ` 函数来实现防抖功能
+- Lodash 提供 `_.throttle(func, wait, options)` 创建节流函数，`wait` 的单位是毫秒。
 
 ```javascript
-box.addEventListener("mousemove", __throttle(mousemove, 500));
+box.addEventListener("mousemove", _.throttle(mousemove, 500));
 ```
 
-## ES6总结
+## 现代 JavaScript 语法总结
 
 ### 1. 变量声明：`let` 和 `const`
 
-ES6 之前只有 `var`，它只有**函数作用域**（容易导致变量污染）。ES6 引入了**块级作用域**。
+在 ES2015 之前，变量通常使用 `var` 声明。`var` 在函数内部具有函数作用域，在脚本顶层则属于全局作用域；它不受普通块级作用域限制。ES2015 引入了 `let` 和 `const`，用于创建块级作用域绑定。
 
-- **`const`**: 常量。声明后不能重新赋值（推荐优先使用）。
+- **`const`**：声明不可重新赋值的绑定，通常应优先使用；如果绑定的是对象或数组，其内部属性或元素仍然可以修改。
 - **`let`**: 变量。可以被重新赋值。
 
 ```javascript
@@ -1326,71 +1332,55 @@ age = 19; // 正确
 // birthYear = 2006; // 报错！无法给常量重新赋值
 ```
 
-### 2. 箭头函数（lambda表达式）
+### 2. 箭头函数
 
-提供了更简洁的函数写法，并且**不绑定自己的 `this`**（它会捕获其所在上下文的 `this` 值，解决了 `this` 指向混乱的问题）。
+箭头函数提供了更简洁的函数表达式语法。它没有自己的 `this`，而是从外层词法环境中取得 `this`；这适合部分回调场景，但不能概括为自动解决所有 `this` 问题。箭头函数不适合用作需要动态 `this` 的对象方法，也不能作为构造函数使用。
 
 ```javascript
 // 传统函数
-function add(a, b) {
+function addTraditional(a, b) {
   return a + b;
 }
 
 // 箭头函数
-const add = (a, b) => a + b;
+const addArrow = (a, b) => a + b;
 
-// 如果只有一个参数，括号可以省略
+// 如果只有一个形式参数且它是简单标识符，括号可以省略
 const double = n => n * 2;
 
 // 箭头函数可以直接返回一个对象
-const fn = (uname) => ({ uname: uname })
-console.log(fn('刘德华'))
+const createUser = (uname) => ({ uname });
+console.log(createUser("刘德华"));
 
-this指向问题：
-// 以前this的指向：  谁调用的这个函数，this 就指向谁
-console.log(this)  // window
-
-// 普通函数
-function fn() {
-    console.log(this)  // window
+// this 指向示例
+function showStrictThis() {
+  "use strict";
+  console.log(this);
 }
-window.fn()
 
-// 对象方法里面的this
-const obj = {
-    name: 'andy',
-    sayHi: function () {
-    console.log(this)  // obj
-    }
-}
-    obj.sayHi()
+showStrictThis(); // undefined
 
-// 箭头函数的this  是上一层作用域的this 指向
-const fn = () => {
-    console.log(this)  // window
-}
-fn()
-// 对象方法箭头函数 this
-    const obj = {
-      uname: 'pink老师',
-      sayHi: () => {
-        console.log(this)  // this 指向谁？ window
-      }
-    }
-    obj.sayHi()
+const personWithMethod = {
+  name: "andy",
+  sayHi() {
+    console.log(this); // personWithMethod
+  },
+};
 
-const obj = {
-    uname: 'pink老师',
-    sayHi: function () {
-    console.log(this)  // obj
-    let i = 10
+personWithMethod.sayHi();
+
+const arrowCallbackDemo = {
+  uname: "pink老师",
+  sayHi() {
     const count = () => {
-        console.log(this)  // obj
-    }
-    count()
-    }
-}
-obj.sayHi()
+      console.log(this); // arrowCallbackDemo
+    };
+
+    count();
+  },
+};
+
+arrowCallbackDemo.sayHi();
 ```
 
 ### 3. 模板字符串
@@ -1429,11 +1419,11 @@ const [first, second] = numbers;
 console.log(second); // 2
 ```
 
-### 5. 展开运算符与剩余参数 (`...`)
+### 5. 展开语法与剩余语法（`...`）
 
-`...` 这个语法非常强大，根据上下文不同有两种用法。
+`...` 根据所处的语法位置表示展开语法或剩余语法。
 
-**展开:** 将数组或对象“展开”成单个元素。
+**展开语法：** 在函数实参列表或数组字面量中，可以将可迭代对象展开为多个实参或数组元素；在对象字面量中，则会把源值的自有可枚举属性复制到新对象。
 
 ```javascript
 const arr1 = [1, 2];
@@ -1444,7 +1434,7 @@ const obj = { a: 1 };
 const newObj = { ...obj, b: 2 }; // { a: 1, b: 2 }
 ```
 
-**剩余:** 将多个元素收集到一个数组中。
+**剩余语法：** 在函数形参中，它会把尚未匹配的实参收集到数组中；在解构中，它可以把剩余数组元素收集到数组，或把剩余对象属性收集到对象。
 
 ```javascript
 function sumAll(...numbers) {
@@ -1474,7 +1464,7 @@ const evens = nums.filter((n) => n % 2 === 0); // [2, 4]
 
 ### 7. 默认参数
 
-在函数定义时直接给参数设置默认值，不再需要 `a = a || 1` 这种hack写法。
+默认参数会在调用时没有传入对应实参，或显式传入 `undefined` 时生效。它与 `a = a || 1` 不完全相同：`0`、空字符串和 `false` 等假值不会触发默认参数，却会被 `||` 替换。
 
 ```javascript
 function multiply(a, b = 1) {
@@ -1527,7 +1517,7 @@ dog.speak(); // "旺财 发出了叫声"
 
 ### 10. Promise
 
-Promise 是异步编程的一种解决方案，比传统的回调函数更合理、更强大。它解决了“回调地狱”的问题。
+Promise 表示异步操作最终完成或失败的结果，并支持链式处理、错误传递和多个异步操作的组合。它可以减少多层嵌套回调，但并不会消除回调，也不能自动避免所有异步流程嵌套问题。
 
 ```javascript
 const fetchData = () => {
@@ -1539,7 +1529,7 @@ const fetchData = () => {
 };
 
 fetchData().then((data) => {
-  console.log(data); // 1秒后打印 "数据获取成功！"
+  console.log(data); // 延迟时间到达并轮到该任务执行后打印，通常不会早于约 1 秒
 });
 ```
 

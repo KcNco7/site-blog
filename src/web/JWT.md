@@ -1,1047 +1,817 @@
-# JWT(JSON Web Tokens)
+# JWT（JSON Web Token）
 
-它主要用来做两件事：
+JWT（JSON Web Token）是一种紧凑的声明传递格式。Web 身份认证中常见的是经过签名的 JWT，也就是 JWS：服务端签发令牌，资源服务验证签名和声明后识别请求者。
 
-1. **签发 JWT**
-2. **验证 JWT**
+签名只能证明内容未被篡改且来自持有签名密钥的一方，并不会隐藏内容。常见的紧凑型 JWS 由三段 Base64URL 数据组成：
 
----
+```text
+header.payload.signature
+```
 
-## 1. 安装
+Header 描述令牌类型和算法，Payload 保存 claims（声明），Signature 用于完整性和来源校验。Header 和 Payload 可以被客户端直接解码，因此不能把密码、证件号码等秘密放入其中。
+
+## 安装
 
 ```bash
 npm i jsonwebtoken
 npm i -D @types/jsonwebtoken
 
-pnpm add jsonwebtoken
-pnpm add @types/jsonwebtoken -D
-
+# 示例使用 Express 时再安装
 npm i express
 npm i -D @types/express
 ```
 
----
+## 签发令牌
 
-## 2. 最基础用法
-
-### 签发 token
+下面以 HS256 为例。HS256 使用同一个高熵 secret 签发和验证；任何持有该 secret 的服务都同时具备签发能力。
 
 ```js
 import jwt from "jsonwebtoken";
 
-const secret = "your-secret-key";
+const secret = process.env.JWT_SECRET;
+if (!secret) {
+  throw new Error("缺少 JWT_SECRET");
+}
 
 const token = jwt.sign(
-  { userId: 123, username: "tom" }, // payload
-  secret, // 密钥
-  { expiresIn: "2h" }, // 2小时过期
+  {
+    sub: "user-123",
+    username: "tom",
+    role: "user",
+  },
+  secret,
+  {
+    algorithm: "HS256",
+    expiresIn: "1h",
+    issuer: "https://auth.example.com",
+    audience: "example-api",
+  },
 );
 
 console.log(token);
 ```
 
----
+`jsonwebtoken` 默认会加入 `iat`。只有配置 `expiresIn` 或直接提供 `exp` 时才会有过期时间。`expiresIn: 60` 中的数字按秒解释；字符串应明确写单位，例如 `"15m"`、`"1h"`。
 
-### 验证 token
+## 验证令牌
+
+验证不能只检查签名，还应限制算法，并校验当前系统约定的 `issuer`、`audience` 等声明。
 
 ```js
-const jwt = require("jsonwebtoken");
+import jwt from "jsonwebtoken";
 
-const secret = "your-secret-key";
-const token = "上面生成的token";
+const secret = process.env.JWT_SECRET;
+const token = process.env.ACCESS_TOKEN;
 
-try {
-  const decoded = jwt.verify(token, secret);
-  console.log("验证通过:", decoded);
-} catch (err) {
-  console.log("验证失败:", err.message);
+if (!secret || !token) {
+  throw new Error("缺少 JWT_SECRET 或 ACCESS_TOKEN");
 }
-```
 
-验证成功后，`decoded` 会包含你签发时放进去的 payload，以及自动生成的时间字段，比如：
-
-- `iat`: 签发时间
-- `exp`: 过期时间
-
----
-
-## 3. 常用 API
-
----
-
-### `jwt.sign(payload, secretOrPrivateKey, options)`
-
-用于生成 JWT。
-
-```js
-const token = jwt.sign({ userId: 1 }, "my-secret", {
-  expiresIn: "1d",
-  issuer: "my-app",
-  audience: "my-users",
-});
-```
-
-常用参数：
-
-- `expiresIn`: 过期时间，如：
-  - `60`
-  - `'10m'`
-  - `'2h'`
-  - `'7d'`
-- `issuer`: 签发者
-- `audience`: 接收方
-- `subject`: 主题
-- `algorithm`: 签名算法，默认通常是 `HS256`
-
----
-
-### `jwt.verify(token, secretOrPublicKey, options)`
-
-用于验证 JWT 是否有效。
-
-```js
 try {
-  const decoded = jwt.verify(token, "my-secret", {
-    issuer: "my-app",
-    audience: "my-users",
+  const payload = jwt.verify(token, secret, {
+    algorithms: ["HS256"],
+    issuer: "https://auth.example.com",
+    audience: "example-api",
   });
-  console.log(decoded);
-} catch (err) {
-  console.error(err.name, err.message);
+
+  console.log("验证通过：", payload);
+} catch (error) {
+  console.error("验证失败：", error instanceof Error ? error.message : error);
 }
 ```
 
-常见错误：
+`verify()` 返回的 Payload 仍来自外部输入。签名通过不代表业务字段就符合应用预期，TypeScript 项目还应对 `sub`、`role` 等字段做运行时校验。
 
-- `TokenExpiredError`: token 过期
-- `JsonWebTokenError`: token 非法
-- `NotBeforeError`: token 还没到生效时间
+常见验证错误包括：
 
----
+- `TokenExpiredError`：令牌已过期。
+- `NotBeforeError`：当前时间早于 `nbf`。
+- `JsonWebTokenError`：令牌格式、签名或声明校验失败。
 
-### `jwt.decode(token)`
-
-只做**解析**，**不验证签名**。
+## `decode()` 只负责解析
 
 ```js
 const decoded = jwt.decode(token);
 console.log(decoded);
 ```
 
-这个方法只能用来“看内容”，**不能拿来做身份认证**。
+`decode()` 不验证签名，结果完全不可信。它适合调试或读取 Header 来辅助选择验证密钥，不能代替 `verify()` 完成认证或授权。
 
----
+## 登录与鉴权流程
 
-## 4. 一个完整登录示例
+典型流程是：
 
----
+1. 登录接口校验请求格式。
+2. 从数据库读取用户，并使用 Argon2、bcrypt 或 scrypt 校验密码哈希；数据库不应保存明文密码。
+3. 校验成功后签发短期 access token。
+4. 客户端通过 HTTPS 携带令牌访问资源接口。
+5. 资源接口验证签名、算法、签发者、受众、有效期和业务 claims。
+6. 如需长期会话，另行设计 refresh token 的轮换、吊销和重用检测机制。
 
-### 登录时签发 token
+下面只展示签发步骤；`authenticateUser()` 代表项目自己的数据库和密码哈希校验逻辑：
 
 ```js
-const express = require("express");
-const jwt = require("jsonwebtoken");
+app.post("/login", async (req, res) => {
+  const user = await authenticateUser(req.body.username, req.body.password);
 
-const app = express();
-app.use(express.json());
-
-const SECRET = "my-secret";
-
-app.post("/login", (req, res) => {
-  const { username, password } = req.body;
-
-  // 这里只是演示，实际要查数据库
-  if (username !== "admin" || password !== "123456") {
+  if (!user) {
     return res.status(401).json({ message: "用户名或密码错误" });
   }
 
-  const token = jwt.sign({ userId: 1, username: "admin" }, SECRET, {
-    expiresIn: "1h",
-  });
+  const token = jwt.sign(
+    { sub: String(user.id), role: user.role },
+    secret,
+    {
+      algorithm: "HS256",
+      expiresIn: "15m",
+      issuer: "https://auth.example.com",
+      audience: "example-api",
+    },
+  );
 
-  res.json({ token });
+  return res.json({ accessToken: token });
 });
 ```
 
----
-
-### 访问受保护接口时验证 token
-
-```js
-function authMiddleware(req, res, next) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(401).json({ message: "缺少 Authorization" });
-  }
-
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : authHeader;
-
-  try {
-    const decoded = jwt.verify(token, SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: "token 无效或已过期" });
-  }
-}
-
-app.get("/profile", authMiddleware, (req, res) => {
-  res.json({
-    message: "这是受保护的数据",
-    user: req.user,
-  });
-});
-
-app.listen(3000, () => {
-  console.log("server running at http://localhost:3000");
-});
-```
-
----
-
-## 5. 前端怎么传 token
-
-一般放在请求头里：
+客户端常用标准 Bearer 方案传递 access token：
 
 ```http
-Authorization: Bearer <token>
+Authorization: Bearer <access-token>
 ```
 
-例如：
+服务端应严格检查认证方案，不能把任意 `Authorization` 内容都当作令牌：
 
 ```js
-fetch("/profile", {
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-});
-```
-
----
-
-## 6. 推荐做法
-
-### 1）不要把敏感信息放进 payload
-
-JWT 的 payload 只是 **Base64 编码**，不是加密。
-别人拿到 token 后可以解码看到内容。
-
-**不要放：**
-
-- 明文密码
-- 银行卡号
-- 身份证号
-- 很敏感的业务数据
-
----
-
-### 2）密钥放环境变量
-
-不要把 secret 写死在代码里。
-
-```js
-const SECRET = process.env.JWT_SECRET;
-```
-
-`.env` 示例：
-
-```sh
-JWT_SECRET=super-long-random-string
-```
-
----
-
-### 3）设置过期时间
-
-不要发永久 token。
-
-```js
-{
-  expiresIn: "1h";
+function readBearerToken(req) {
+  const match = req.headers.authorization?.match(/^Bearer ([^\s]+)$/i);
+  return match?.[1] ?? null;
 }
 ```
 
-常见做法：
+## 安全边界
 
-- access token：15 分钟 ~ 2 小时
-- refresh token：更长时间
+- 只通过 HTTPS 传输令牌，并结合具体客户端模型选择安全的存储方式。
+- access token 应尽量短期有效；JWT 不会自动提供注销、吊销或 refresh token 轮换能力。
+- 不要记录完整令牌，也不要把密钥提交到仓库。
+- HS256 secret 必须足够随机；多服务验证或第三方验证场景通常更适合使用非对称签名。
+- 权限变化、账号禁用等需要立即生效时，应使用短有效期、令牌版本、拒绝列表或服务端会话等补充机制。
 
 ---
 
-### 4）验证时限制算法
+## HS256 与 RS256
 
-如果你明确知道使用什么算法，最好指定：
+### HS256：对称消息认证码
+
+HS256 使用同一个 secret 签发和验证。部署简单，但每个验证方都必须拿到 secret，而拿到 secret 的一方也能签发令牌。因此它适合由同一信任边界控制签发与验证的场景，不应仅凭“单体或微服务”标签机械选择。
 
 ```js
-jwt.verify(token, SECRET, {
+const token = jwt.sign({ sub: "user-1" }, secret, {
+  algorithm: "HS256",
+  expiresIn: "15m",
+  issuer: "https://auth.example.com",
+  audience: "example-api",
+});
+
+const payload = jwt.verify(token, secret, {
   algorithms: ["HS256"],
+  issuer: "https://auth.example.com",
+  audience: "example-api",
 });
 ```
 
----
+secret 应由密码学安全随机源生成并通过密钥管理系统或环境变量注入，不能使用短口令或示例字符串作为生产密钥。
 
-## 7. HS256 和 RS256 的区别
+### RS256：非对称签名
 
-### HS256
-
-- 最简单
-- 一个密钥既能签发也能验证
+RS256 使用 RSA 私钥签发、公钥验证。资源服务只持有公钥时可以验证却不能签发，适合签发方与多个验证方分离的场景。
 
 ```js
-const token = jwt.sign({ userId: 1 }, SECRET, { algorithm: "HS256" });
-const decoded = jwt.verify(token, SECRET, { algorithms: ["HS256"] });
-```
+import fs from "node:fs";
+import jwt from "jsonwebtoken";
 
-适合单体应用、内部服务。
+const privateKeyPath = process.env.JWT_PRIVATE_KEY_PATH;
+const publicKeyPath = process.env.JWT_PUBLIC_KEY_PATH;
+if (!privateKeyPath || !publicKeyPath) {
+  throw new Error("缺少 JWT 密钥路径");
+}
 
----
+const privateKey = fs.readFileSync(privateKeyPath);
+const publicKey = fs.readFileSync(publicKeyPath);
 
-### RS256
-
-- 用**私钥签发**
-- 用**公钥验证**
-- 更适合多服务、第三方验证场景
-
-```js
-const fs = require("fs");
-const jwt = require("jsonwebtoken");
-
-const privateKey = fs.readFileSync("./private.key");
-const publicKey = fs.readFileSync("./public.key");
-
-const token = jwt.sign({ userId: 1 }, privateKey, {
+const token = jwt.sign({ sub: "user-1" }, privateKey, {
   algorithm: "RS256",
-  expiresIn: "1h",
+  expiresIn: "15m",
+  issuer: "https://auth.example.com",
+  audience: "example-api",
+  keyid: "2026-01",
 });
 
-const decoded = jwt.verify(token, publicKey, {
+const payload = jwt.verify(token, publicKey, {
   algorithms: ["RS256"],
+  issuer: "https://auth.example.com",
+  audience: "example-api",
 });
 
-console.log(decoded);
+console.log(payload);
 ```
 
----
+`jsonwebtoken` 默认拒绝小于 2048 位的 RSA 私钥，不应通过兼容选项绕过该限制。生产系统还要规划密钥轮换：可在 Header 中写入 `kid`，验证方再从受信任的本地密钥集合或 JWKS 中选择公钥。不能根据不受信任的 `kid` 任意读取文件或请求 URL。
 
-## 8. 异步写法
+## 同步与回调 API
 
-### sign 异步
+`jsonwebtoken` 的 `sign()` 和 `verify()` 同时支持同步返回值与回调形式。传入回调时通过回调接收结果；不传回调时同步返回或抛出错误。
+
+### 回调签发
 
 ```js
-jwt.sign({ userId: 1 }, SECRET, { expiresIn: "1h" }, (err, token) => {
-  if (err) {
-    return console.error(err);
-  }
-  console.log(token);
-});
+jwt.sign(
+  { sub: "user-1" },
+  secret,
+  {
+    algorithm: "HS256",
+    expiresIn: "15m",
+    issuer: "https://auth.example.com",
+    audience: "example-api",
+  },
+  (error, token) => {
+    if (error || !token) {
+      console.error(error ?? new Error("签发失败"));
+      return;
+    }
+    console.log(token);
+  },
+);
 ```
 
-### verify 异步
+### 回调验证
 
 ```js
-jwt.verify(token, SECRET, (err, decoded) => {
-  if (err) {
-    return console.error("验证失败", err.message);
-  }
-  console.log("验证成功", decoded);
-});
+jwt.verify(
+  token,
+  secret,
+  {
+    algorithms: ["HS256"],
+    issuer: "https://auth.example.com",
+    audience: "example-api",
+  },
+  (error, payload) => {
+    if (error) {
+      console.error("验证失败", error.message);
+      return;
+    }
+    console.log("验证通过", payload);
+  },
+);
 ```
 
----
+回调形式不等于把所有密码学工作自动移到工作线程。选择同步、回调或 Promise 封装主要取决于控制流和密钥获取方式；如果验证密钥需要从 JWKS 异步获取，可以向 `verify()` 传入密钥获取函数。
 
-## 9. 常见坑
+## 常见错误
 
-### 坑 1：`decode` 不是 `verify`
+### 把 `decode()` 当作验证
+
+`decode()` 只解析内容。认证和授权必须从 `verify()` 开始，并继续校验应用所需的 claims。
+
+### 没有限制算法
+
+不要只依赖令牌 Header 自己声明的 `alg`。验证端应显式配置允许的算法，并确保密钥类型与算法匹配。
+
+### 只验证签名，不验证令牌用途
+
+同一系统中若存在 access token、refresh token、邮件验证 token 等不同令牌，应使用不同的 audience、类型声明或验证规则，必要时使用不同密钥，避免一种令牌被误用于另一种接口。
+
+### 宽松解析 `Authorization`
+
+Bearer 方案应拒绝缺少前缀、令牌为空或包含额外空白的输入，而不是直接删除任意前缀：
 
 ```js
-jwt.decode(token);
+function readBearerToken(req) {
+  const match = req.headers.authorization?.match(/^Bearer ([^\s]+)$/i);
+  return match?.[1] ?? null;
+}
 ```
 
-只是解析，不安全。
-真正校验身份一定要用：
+### 混淆秒与字符串单位
+
+`expiresIn: 60` 表示 60 秒；`expiresIn: "60"` 会被时长解析器当作 60 毫秒。字符串形式应明确写成 `"60s"`、`"15m"` 等。
+
+## 最小可运行示例
+
+先设置一个足够随机的 `JWT_SECRET`，然后运行：
 
 ```js
-jwt.verify(token, secret);
-```
+import jwt from "jsonwebtoken";
 
----
+const secret = process.env.JWT_SECRET;
+if (!secret) {
+  throw new Error("请先设置 JWT_SECRET");
+}
 
-### 坑 2：secret 不一致
+const options = {
+  algorithm: "HS256",
+  issuer: "https://auth.example.com",
+  audience: "example-api",
+};
 
-签发和验证必须用同一个 secret（或同一对私钥/公钥）。
+const token = jwt.sign(
+  { sub: "user-1001", role: "admin" },
+  secret,
+  { ...options, expiresIn: "15m" },
+);
 
----
-
-### 坑 3：Authorization 里有 `Bearer `
-
-很多人直接拿整个 header 去 verify，会报错。
-要把前缀去掉：
-
-```js
-const token = authHeader.replace(/^Bearer\s+/, "");
-```
-
----
-
-### 坑 4：token 过期
-
-如果你设置了：
-
-```js
-expiresIn: "1h";
-```
-
-1小时后验证会抛 `TokenExpiredError`。
-
----
-
-## 10. 一个最小可运行示例
-
-```js
-const jwt = require("jsonwebtoken");
-
-const SECRET = "demo-secret";
-
-// 生成 token
-const token = jwt.sign({ userId: 1001, role: "admin" }, SECRET, {
-  expiresIn: "1h",
-});
-
-console.log("token =", token);
-
-// 验证 token
 try {
-  const result = jwt.verify(token, SECRET);
-  console.log("decoded =", result);
-} catch (err) {
-  console.error(err.message);
+  const payload = jwt.verify(token, secret, {
+    algorithms: ["HS256"],
+    issuer: options.issuer,
+    audience: options.audience,
+  });
+  console.log(payload);
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error);
 }
 ```
 
-## TS中使用
+---
 
-如果你的 `tsconfig.json` 开了：
+## TypeScript 导入方式
 
-```json
-{
-  "compilerOptions": {
-    "esModuleInterop": true
-  }
-}
-```
-
-可以这样写：
+启用 `esModuleInterop` 后可以使用默认导入：
 
 ```ts
-import jwt, { JwtPayload, SignOptions, Secret } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+import type { JwtPayload, SignOptions } from "jsonwebtoken";
 ```
 
-如果没开 `esModuleInterop`，用这个：
+未启用时可写成：
 
 ```ts
 import * as jwt from "jsonwebtoken";
 ```
 
-下面我默认使用第一种写法。
+下面使用第一种形式。示例还用 Zod 验证运行时数据：
 
-## 签发 token
-
-```ts
-import jwt from "jsonwebtoken";
-
-const SECRET = "your-secret-key";
-
-const token = jwt.sign({ userId: 123, username: "tom" }, SECRET, {
-  expiresIn: "2h",
-});
-
-console.log(token);
+```bash
+npm i jsonwebtoken zod
+npm i -D @types/jsonwebtoken
 ```
 
----
+## 分离业务 claims 与标准 claims
 
-## 验证 token
-
-```ts
-import jwt, { JwtPayload } from "jsonwebtoken";
-
-const SECRET = "your-secret-key";
-const token = "你的 token";
-
-try {
-  const decoded = jwt.verify(token, SECRET);
-
-  // verify 的返回类型是 string | JwtPayload
-  if (typeof decoded === "string") {
-    console.log("payload 是字符串:", decoded);
-  } else {
-    console.log("验证通过:", decoded.userId, decoded.username);
-  }
-} catch (err) {
-  console.error("验证失败:", (err as Error).message);
-}
-```
-
----
-
-## 推荐：给 payload 定义类型
-
-在 TS 里，最好自己定义一个 payload 接口。
+签发函数的输入只描述应用自己负责的字段。`iat`、`exp`、`iss` 和 `aud` 由签发选项生成，不需要通过继承 `JwtPayload` 混入输入类型。
 
 ```ts
-import { JwtPayload } from "jsonwebtoken";
-
-export interface MyJwtPayload extends JwtPayload {
-  userId: number;
+export interface AccessTokenClaims {
+  sub: string;
   username: string;
   role: "admin" | "user";
 }
 ```
 
-这里继承 `JwtPayload` 的好处是，`exp`、`iat` 这些 JWT 标准字段也能兼容。
+类型断言只能影响编译器，不能检查外部数据。验证后的 Payload 必须再经过运行时 schema。
 
----
-
-## 封装成工具函数
-
-这是最常见的写法。
-
-## `jwt.ts`
+## JWT 工具模块
 
 ```ts
+// src/jwt.ts
 import jwt from "jsonwebtoken";
-import type { JwtPayload, Secret, SignOptions } from "jsonwebtoken";
+import type { JwtPayload, SignOptions } from "jsonwebtoken";
+import { z } from "zod";
 
-const SECRET: Secret = process.env.JWT_SECRET || "dev-secret";
+const issuer = "https://auth.example.com";
+const audience = "example-api";
 
-export interface AccessTokenPayload extends JwtPayload {
-  userId: number;
+function requireSecret(): string {
+  const value = process.env.JWT_SECRET;
+  if (!value) {
+    throw new Error("缺少 JWT_SECRET");
+  }
+  return value;
+}
+
+export interface AccessTokenClaims {
+  sub: string;
   username: string;
   role: "admin" | "user";
 }
 
-// 签发 token
-export function signAccessToken(
-  payload: Omit<AccessTokenPayload, keyof JwtPayload>,
-  options?: SignOptions,
-): string {
-  return jwt.sign(payload, SECRET, {
-    expiresIn: "1h",
-    ...options,
-  });
+const accessTokenSchema = z.object({
+  sub: z.string().min(1),
+  username: z.string().min(1),
+  role: z.enum(["admin", "user"]),
+  iat: z.number().int(),
+  exp: z.number().int(),
+});
+
+export type VerifiedAccessToken = JwtPayload &
+  z.infer<typeof accessTokenSchema>;
+
+const signOptions = {
+  algorithm: "HS256",
+  expiresIn: "15m",
+  issuer,
+  audience,
+} satisfies SignOptions;
+
+export function signAccessToken(claims: AccessTokenClaims): string {
+  return jwt.sign(claims, requireSecret(), signOptions);
 }
 
-// 验证 token
-export function verifyAccessToken(token: string): AccessTokenPayload {
-  const decoded = jwt.verify(token, SECRET);
+export function verifyAccessToken(token: string): VerifiedAccessToken {
+  const decoded = jwt.verify(token, requireSecret(), {
+    algorithms: ["HS256"],
+    issuer,
+    audience,
+  });
 
   if (typeof decoded === "string") {
-    throw new Error("Invalid token payload");
+    throw new Error("令牌 Payload 必须是对象");
   }
 
-  return decoded as AccessTokenPayload;
+  const claims = accessTokenSchema.parse(decoded);
+  return { ...decoded, ...claims };
 }
 ```
 
----
+该 schema 要求 access token 必须包含 `iat` 和 `exp`，并检查业务字段。若还需要校验 token 类型、租户或权限版本，应把相应字段加入签发与验证规则。
 
-## 使用
+## 扩展 Express Request
 
-```ts
-import { signAccessToken, verifyAccessToken } from "./jwt";
-
-const token = signAccessToken({
-  userId: 1,
-  username: "admin",
-  role: "admin",
-});
-
-console.log("token:", token);
-
-const payload = verifyAccessToken(token);
-console.log(payload.userId);
-console.log(payload.username);
-console.log(payload.role);
-```
-
----
-
-## Express + TypeScript 写法
-
-这个是最实用的场景。
-
----
-
-## 登录接口签发 token
+新建 `src/types/express.d.ts`：
 
 ```ts
-import express, { Request, Response } from "express";
-import { signAccessToken } from "./jwt";
-
-const app = express();
-app.use(express.json());
-
-app.post("/login", (req: Request, res: Response) => {
-  const { username, password } = req.body;
-
-  // 这里只是演示
-  if (username !== "admin" || password !== "123456") {
-    return res.status(401).json({ message: "用户名或密码错误" });
-  }
-
-  const token = signAccessToken({
-    userId: 1,
-    username: "admin",
-    role: "admin",
-  });
-
-  return res.json({ token });
-});
-```
-
----
-
-## 给 `Request` 扩展 `user`
-
-TS 里很多人会遇到这个问题：
-
-```ts
-req.user = ...
-```
-
-会报错，因为默认 `Express.Request` 没有 `user` 字段。
-
-你可以新建一个类型声明文件，例如：
-
-`src/types/express/index.d.ts`
-
-```ts
-import type { AccessTokenPayload } from "../../jwt";
+import type { VerifiedAccessToken } from "../jwt";
 
 declare global {
   namespace Express {
     interface Request {
-      user?: AccessTokenPayload;
+      user?: VerifiedAccessToken;
     }
   }
 }
+
+export {};
 ```
 
-然后确保 `tsconfig.json` 能包含这个目录，比如：
+通常只要 `tsconfig.json` 的 `include` 覆盖 `src`，声明文件就会被编译器读取。不要为了这一项随意设置 `typeRoots`；一旦设置，它会改变类型包的查找范围。
 
 ```json
 {
-  "compilerOptions": {
-    "typeRoots": ["./node_modules/@types", "./src/types"]
-  }
+  "include": ["src"]
 }
 ```
 
-如果你项目里默认就能扫到 `.d.ts`，也可以不用配。
-
----
-
-## 鉴权中间件
+## Bearer 鉴权中间件
 
 ```ts
-import { Request, Response, NextFunction } from "express";
+// src/auth-middleware.ts
+import type { NextFunction, Request, Response } from "express";
 import { verifyAccessToken } from "./jwt";
 
 export function authMiddleware(
   req: Request,
   res: Response,
   next: NextFunction,
-) {
-  const authHeader = req.headers.authorization;
+): void {
+  const match = req.headers.authorization?.match(/^Bearer ([^\s]+)$/i);
 
-  if (!authHeader) {
-    return res.status(401).json({ message: "缺少 Authorization" });
+  if (!match) {
+    res.status(401).json({ message: "未认证" });
+    return;
   }
 
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : authHeader;
-
   try {
-    const decoded = verifyAccessToken(token);
-    req.user = decoded;
+    req.user = verifyAccessToken(match[1]);
     next();
-  } catch (err) {
-    return res.status(401).json({
-      message: "token 无效或已过期",
-    });
+  } catch (error) {
+    // 对外使用统一消息；具体错误应写入受控日志，且不要记录完整令牌。
+    console.warn("Access token verification failed", error);
+    res.status(401).json({ message: "未认证" });
   }
 }
 ```
 
----
-
-## 受保护接口
+受保护路由在中间件之后可以读取 `req.user`：
 
 ```ts
-import express, { Request, Response } from "express";
-import { authMiddleware } from "./authMiddleware";
+import express from "express";
+import { authMiddleware } from "./auth-middleware";
 
 const app = express();
 
-app.get("/profile", authMiddleware, (req: Request, res: Response) => {
-  return res.json({
-    message: "这是受保护的数据",
-    user: req.user,
+app.get("/profile", authMiddleware, (req, res) => {
+  res.json({
+    id: req.user?.sub,
+    username: req.user?.username,
+    role: req.user?.role,
   });
-});
-
-app.listen(3000, () => {
-  console.log("server running at http://localhost:3000");
 });
 ```
 
----
+如果业务要求 `user` 在特定处理器中一定存在，可以进一步定义经过认证的 Request 类型，或由框架层保证中间件顺序；可选属性能避免把全局所有路由都误认为已认证。
 
-## 区分错误类型
+## 错误处理
 
-`jsonwebtoken` 有几种常见错误：
-
-- `TokenExpiredError`
-- `JsonWebTokenError`
-- `NotBeforeError`
-
-你可以这样判断：
+`jsonwebtoken` 常见错误类包括 `TokenExpiredError`、`NotBeforeError` 和 `JsonWebTokenError`。服务端可以在日志或监控中区分它们，但通常不应把验签细节原样返回给客户端：
 
 ```ts
-import jwt from "jsonwebtoken";
-
 try {
-  const decoded = jwt.verify(token, SECRET);
-} catch (err) {
-  if (err instanceof jwt.TokenExpiredError) {
-    console.log("token 已过期");
-  } else if (err instanceof jwt.JsonWebTokenError) {
-    console.log("token 非法");
-  } else if (err instanceof jwt.NotBeforeError) {
-    console.log("token 尚未生效");
+  verifyAccessToken(token);
+} catch (error) {
+  if (error instanceof jwt.TokenExpiredError) {
+    console.warn("access token expired");
+  } else if (error instanceof jwt.NotBeforeError) {
+    console.warn("access token is not active yet");
+  } else if (error instanceof jwt.JsonWebTokenError) {
+    console.warn("invalid access token");
   } else {
-    console.log("未知错误");
+    console.error("unexpected verification failure", error);
   }
 }
 ```
 
+`decode()` 的返回值同样需要当作不可信输入。即便它在 TypeScript 中被断言为某个接口，也不能用于身份认证。
+
 ---
 
-## `decode` 的 TypeScript 写法
+## 准备 RSA 密钥
 
-```ts
-import jwt from "jsonwebtoken";
+开发环境可以用 OpenSSL 生成一对 RSA 密钥。私钥只交给签发服务，公钥交给验证方：
 
-const decoded = jwt.decode(token);
-
-if (!decoded) {
-  console.log("token 无法解析");
-} else if (typeof decoded === "string") {
-  console.log(decoded);
-} else {
-  console.log(decoded.userId);
-}
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out private.pem
+openssl rsa -pubout -in private.pem -out public.pem
 ```
 
-但是要记住：
-
-`decode()` 只解析，不验签
-
-所以：
-
-- 看内容可以用 `decode`
-- 做登录鉴权必须用 `verify`
-
----
+密钥文件不应提交到仓库。生产环境通常使用密钥管理服务，并通过 `kid` 与受信任的 JWKS 或本地公钥集合支持轮换。
 
 ## RS256 的 TypeScript 写法
 
-如果你不是用 `SECRET`，而是用公私钥：
-
 ```ts
-import fs from "fs";
+import fs from "node:fs";
 import jwt from "jsonwebtoken";
 
-const privateKey = fs.readFileSync("./private.key");
-const publicKey = fs.readFileSync("./public.key");
+const privateKeyPath = process.env.JWT_PRIVATE_KEY_PATH;
+const publicKeyPath = process.env.JWT_PUBLIC_KEY_PATH;
 
-interface MyJwtPayload {
-  userId: number;
-  username: string;
+if (!privateKeyPath || !publicKeyPath) {
+  throw new Error("缺少 JWT_PRIVATE_KEY_PATH 或 JWT_PUBLIC_KEY_PATH");
 }
 
-const token = jwt.sign({ userId: 1, username: "admin" }, privateKey, {
-  algorithm: "RS256",
-  expiresIn: "1h",
-});
+const privateKey = fs.readFileSync(privateKeyPath);
+const publicKey = fs.readFileSync(publicKeyPath);
 
-const decoded = jwt.verify(token, publicKey, {
+const token = jwt.sign(
+  { sub: "user-1", username: "admin", role: "admin" },
+  privateKey,
+  {
+    algorithm: "RS256",
+    expiresIn: "15m",
+    issuer: "https://auth.example.com",
+    audience: "example-api",
+    keyid: "2026-01",
+  },
+);
+
+const payload = jwt.verify(token, publicKey, {
   algorithms: ["RS256"],
+  issuer: "https://auth.example.com",
+  audience: "example-api",
 });
 
-if (typeof decoded !== "string") {
-  console.log(decoded.userId);
-}
+console.log(payload);
 ```
-
----
 
 ## Promise 风格封装
 
-`jsonwebtoken` 原生是回调风格，你如果想在 TS 里配合 `async/await`，可以自己封一下。
-
----
-
-## 异步签发
+`jsonwebtoken` 同时提供同步和回调 API，本身不直接返回 Promise。需要统一 `async/await` 控制流时，可以封装回调版本，但泛型或类型断言不能代替运行时 claims 校验。
 
 ```ts
+// src/jwt.ts
+import fs from "node:fs";
 import jwt from "jsonwebtoken";
-import type { Secret, SignOptions } from "jsonwebtoken";
+import type { JwtPayload } from "jsonwebtoken";
+import { z } from "zod";
 
-const SECRET: Secret = process.env.JWT_SECRET || "dev-secret";
+const issuer = "https://auth.example.com";
+const audience = "example-api";
+const keyId = "2026-01";
 
-export function signJwtAsync(
-  payload: object,
-  options?: SignOptions,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    jwt.sign(payload, SECRET, { expiresIn: "1h", ...options }, (err, token) => {
-      if (err || !token) {
-        return reject(err || new Error("Failed to sign token"));
-      }
-      resolve(token);
-    });
-  });
-}
-```
+const privateKeyPath = process.env.JWT_PRIVATE_KEY_PATH;
+const publicKeyPath = process.env.JWT_PUBLIC_KEY_PATH;
 
----
-
-## 异步验证
-
-```ts
-import jwt from "jsonwebtoken";
-import type { JwtPayload, Secret } from "jsonwebtoken";
-
-const SECRET: Secret = process.env.JWT_SECRET || "dev-secret";
-
-export function verifyJwtAsync<T extends JwtPayload = JwtPayload>(
-  token: string,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    jwt.verify(token, SECRET, (err, decoded) => {
-      if (err) {
-        return reject(err);
-      }
-      if (!decoded || typeof decoded === "string") {
-        return reject(new Error("Invalid token payload"));
-      }
-      resolve(decoded as T);
-    });
-  });
-}
-```
-
----
-
-## 使用
-
-```ts
-interface AccessTokenPayload extends jwt.JwtPayload {
-  userId: number;
-  username: string;
+if (!privateKeyPath || !publicKeyPath) {
+  throw new Error("缺少 JWT 私钥或公钥路径");
 }
 
-async function main() {
-  const token = await signJwtAsync({
-    userId: 1,
-    username: "admin",
-  });
+const privateKey = fs.readFileSync(privateKeyPath);
+const publicKey = fs.readFileSync(publicKeyPath);
 
-  const decoded = await verifyJwtAsync<AccessTokenPayload>(token);
-  console.log(decoded.userId);
-}
-
-main();
-```
-
----
-
-## 一个完整的 TS 最小示例
-
-```ts
-import express, { Request, Response, NextFunction } from "express";
-import jwt, { JwtPayload, Secret } from "jsonwebtoken";
-
-const app = express();
-app.use(express.json());
-
-const SECRET: Secret = process.env.JWT_SECRET || "dev-secret";
-
-interface AccessTokenPayload extends JwtPayload {
-  userId: number;
+export interface AccessTokenClaims {
+  sub: string;
   username: string;
   role: "admin" | "user";
 }
 
+const verifiedTokenSchema = z.object({
+  sub: z.string().min(1),
+  username: z.string().min(1),
+  role: z.enum(["admin", "user"]),
+  iat: z.number().int(),
+  exp: z.number().int(),
+});
+
+export type VerifiedAccessToken = JwtPayload &
+  z.infer<typeof verifiedTokenSchema>;
+
+export function signAccessTokenAsync(
+  claims: AccessTokenClaims,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    jwt.sign(
+      claims,
+      privateKey,
+      {
+        algorithm: "RS256",
+        expiresIn: "15m",
+        issuer,
+        audience,
+        keyid: keyId,
+      },
+      (error, token) => {
+        if (error || !token) {
+          reject(error ?? new Error("签发失败"));
+          return;
+        }
+        resolve(token);
+      },
+    );
+  });
+}
+
+export function verifyAccessTokenAsync(
+  token: string,
+): Promise<VerifiedAccessToken> {
+  return new Promise((resolve, reject) => {
+    jwt.verify(
+      token,
+      publicKey,
+      {
+        algorithms: ["RS256"],
+        issuer,
+        audience,
+      },
+      (error, decoded) => {
+        if (error || !decoded || typeof decoded === "string") {
+          reject(error ?? new Error("令牌 Payload 必须是对象"));
+          return;
+        }
+
+        const result = verifiedTokenSchema.safeParse(decoded);
+        if (!result.success) {
+          reject(new Error("令牌 claims 不符合约定"));
+          return;
+        }
+
+        resolve({ ...decoded, ...result.data });
+      },
+    );
+  });
+}
+```
+
+## 完整 Express 示例
+
+安装依赖：
+
+```bash
+npm i express jsonwebtoken zod argon2
+npm i -D typescript tsx @types/express @types/jsonwebtoken
+```
+
+以下示例使用环境变量中的 Argon2 哈希模拟数据库记录。实际项目应从数据库读取用户，并由注册或改密流程生成密码哈希。
+
+```ts
+// src/app.ts
+import express from "express";
+import type { NextFunction, Request, Response } from "express";
+import argon2 from "argon2";
+import { z } from "zod";
+import {
+  signAccessTokenAsync,
+  verifyAccessTokenAsync,
+} from "./jwt";
+import type { VerifiedAccessToken } from "./jwt";
+
 declare global {
   namespace Express {
     interface Request {
-      user?: AccessTokenPayload;
+      user?: VerifiedAccessToken;
     }
   }
 }
 
-function signAccessToken(payload: Omit<AccessTokenPayload, keyof JwtPayload>) {
-  return jwt.sign(payload, SECRET, {
-    expiresIn: "1h",
-    algorithm: "HS256",
-  });
+const demoPasswordHash = process.env.DEMO_PASSWORD_HASH;
+if (!demoPasswordHash) {
+  throw new Error("缺少 DEMO_PASSWORD_HASH");
 }
 
-function verifyAccessToken(token: string): AccessTokenPayload {
-  const decoded = jwt.verify(token, SECRET, {
-    algorithms: ["HS256"],
-  });
+const demoUser = {
+  id: "user-1",
+  username: "admin",
+  role: "admin" as const,
+  passwordHash: demoPasswordHash,
+};
 
-  if (typeof decoded === "string") {
-    throw new Error("Invalid token payload");
-  }
-
-  return decoded as AccessTokenPayload;
-}
-
-function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(401).json({ message: "缺少 Authorization" });
-  }
-
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : authHeader;
-
-  try {
-    req.user = verifyAccessToken(token);
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: "token 无效或已过期" });
-  }
-}
-
-app.post("/login", (req: Request, res: Response) => {
-  const { username, password } = req.body;
-
-  if (username !== "admin" || password !== "123456") {
-    return res.status(401).json({ message: "用户名或密码错误" });
-  }
-
-  const token = signAccessToken({
-    userId: 1,
-    username: "admin",
-    role: "admin",
-  });
-
-  return res.json({ token });
+const loginSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
 });
 
-app.get("/profile", authMiddleware, (req: Request, res: Response) => {
-  return res.json({
-    user: req.user,
+async function authenticateUser(username: string, password: string) {
+  if (username !== demoUser.username) {
+    return null;
+  }
+
+  return (await argon2.verify(demoUser.passwordHash, password))
+    ? demoUser
+    : null;
+}
+
+async function authMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const match = req.headers.authorization?.match(/^Bearer ([^\s]+)$/i);
+
+  if (!match) {
+    res.status(401).json({ message: "未认证" });
+    return;
+  }
+
+  try {
+    req.user = await verifyAccessTokenAsync(match[1]);
+    next();
+  } catch (error) {
+    console.warn("Access token verification failed", error);
+    res.status(401).json({ message: "未认证" });
+  }
+}
+
+const app = express();
+app.use(express.json());
+
+app.post("/login", async (req, res) => {
+  const input = loginSchema.safeParse(req.body);
+  if (!input.success) {
+    res.status(400).json({ message: "请求格式错误" });
+    return;
+  }
+
+  const user = await authenticateUser(
+    input.data.username,
+    input.data.password,
+  );
+
+  if (!user) {
+    res.status(401).json({ message: "用户名或密码错误" });
+    return;
+  }
+
+  const accessToken = await signAccessTokenAsync({
+    sub: user.id,
+    username: user.username,
+    role: user.role,
+  });
+
+  res.json({ accessToken });
+});
+
+app.get("/profile", authMiddleware, (req, res) => {
+  res.json({
+    id: req.user?.sub,
+    username: req.user?.username,
+    role: req.user?.role,
   });
 });
 
 app.listen(3000, () => {
   console.log("server running at http://localhost:3000");
 });
+
+export {};
 ```
 
----
-
-## TS 里最常见的坑
-
----
-
-### `verify` 返回的不是你的自定义类型
-
-`jwt.verify()` 的返回类型一般是：
-
-```ts
-string | JwtPayload;
-```
-
-所以你不能直接：
-
-```ts
-const decoded = jwt.verify(token, SECRET);
-console.log(decoded.userId); // 可能报错
-```
-
-要先判断：
-
-```ts
-if (typeof decoded !== "string") {
-  console.log(decoded.userId);
-}
-```
-
-或者封装成自己的 `verifyAccessToken()`。
-
----
-
-### `req.user` 报错
-
-因为 Express 默认没有 `user` 属性。
-要用 `.d.ts` 扩展 `Express.Request`。
-
----
-
-### `expiresIn` 类型报错
-
-通常这样没问题：
-
-```ts
-expiresIn: "1h";
-```
-
-如果你把它写成普通 `string` 变量，有时 TS 会报类型不兼容。
-可以写成字面量或 `as const`：
-
-```ts
-const EXPIRES_IN = "1h" as const;
-```
-
----
-
-### 不要把 payload 当加密内容
-
-JWT payload 只是编码，不是加密。
-所以别放：
-
-- 密码
-- 手机号敏感信息
-- 银行卡信息
-- 太详细的隐私数据
-
----
-
-## 推荐项目结构
-
-你可以这样组织：
+可以用一次性脚本为开发示例生成哈希，再把输出写入本地环境变量：
 
 ```bash
-src/
-  jwt/
-    index.ts
-  middleware/
-    auth.ts
-  types/
-    express/
-      index.d.ts
-  app.ts
+node -e "require('argon2').hash(process.argv[1]).then(console.log)" "change-me"
 ```
+
+## 仍需由系统设计解决的问题
+
+- 全程使用 HTTPS，并避免在日志、URL 或错误响应中泄漏令牌。
+- access token 保持短期有效；refresh token 应有单独的存储、轮换、吊销和重用检测策略。
+- 规划 `kid`、旧公钥保留窗口和 JWKS 缓存，避免轮换瞬间使有效令牌全部失效。
+- 不要让未验证的 `kid`、`jku` 等 Header 值控制任意文件读取或网络请求。
+- 登录限流、多因素认证、账号锁定和会话撤销不由 JWT 格式自动提供。

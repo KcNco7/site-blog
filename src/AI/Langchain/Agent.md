@@ -1,13 +1,12 @@
 # Agent 完整知识（概念 + LangChain.js v1 实战）
 
-> 本文整合两份材料：Agent 完全指南（概念：Agent / RAG / Workflow / Tool / MCP 五概念辨析）、以及 LangChain.js v1 的 `createAgent` 代码实战。
-> 读完你能：讲清 Agent 是什么、它和普通问答/Workflow/RAG/Tool/MCP 的区别，知道最小 Agent 由哪几部分组成、怎么运行、最容易在哪翻车，并能用 v1 API 亲手写出一个会调用工具、带记忆、能把 RAG 当工具的 Agent。
+> 本篇聚焦 Agent、Workflow、Tool、RAG 与 MCP 的概念边界。运行流程、代码、记忆和 Agentic RAG 分别放在本系列后续文章。
 
 ---
 
-# 第一部分 · 概念
+## 第一部分 · 概念
 
-## 1. 什么是 Agent
+### 1. 什么是 Agent
 
 一句话：
 
@@ -27,7 +26,7 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 看当前目标 → 决定下一步动作 → 调用工具 → 观察结果 → 再决定 → ... → 完成
 ```
 
-### Agent 和 RAG 的关系
+#### Agent 和 RAG 的关系
 
 - **RAG** 是一种「先检索再回答」的**方法**
 - **Agent** 是一种「会自己决定步骤并调用工具」的**系统**
@@ -41,7 +40,7 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 
 ---
 
-## 2. 为什么 Agent 需要工具
+### 2. 为什么 Agent 需要工具
 
 一句话：
 
@@ -54,12 +53,12 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 - 算工具：读文件、搜网页、查数据库、执行代码、RAG 检索器
 - 不单独算工具：模型自己的推理、整理上下文、总结内容（这些是模型**能力**，不是独立工具）
 
-### 为什么不能只靠大模型
+#### 为什么不能只靠大模型
 
 大模型最擅长的是「根据输入生成文本」，但真实任务还需要查、算、读、写、调系统、执行操作。具体来说：
 
-1. **模型不能直接访问外部世界**：看不到你的本地文件、最新网页、数据库、当前系统状态——没有工具就只能靠已有知识猜
-2. **模型不能天然执行动作**：你让它发邮件/查库/建工单/跑代码，它只会「描述怎么做」，不会真的做
+1. **模型不会自动获得外部权限**：本地文件、网页、数据库和当前系统状态必须由宿主应用、模型提供商的服务端工具或显式工具提供
+2. **模型生成的动作意图不等于动作已执行**：发邮件、建工单或运行代码仍要由获得授权的应用或工具执行
 3. **模型做精确计算和查询不稳定**：数学、精确过滤、数据库查找更适合交给专门工具
 4. **Agent 需要「先做，再看结果，再继续」**：没有工具就没法真正行动并观察结果
 
@@ -67,11 +66,11 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 
 > **大模型负责思考（理解目标、决定下一步），工具负责行动（执行能力、返回真实结果）。**
 >
-> **没有工具的 Agent，往往只剩下「会说」，不一定真的「会做」。**
+> 没有外部工具的 Agent 仍可进行分类、改写、规划或结构化生成，但不能凭空访问未提供的数据或执行外部副作用。
 
 ---
 
-## 3. Workflow vs Agent
+### 3. Workflow vs Agent
 
 一句话：
 
@@ -89,13 +88,15 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 
 ---
 
-## 4. 什么是 MCP
+### 4. 什么是 MCP
 
-如果指的是 `Model Context Protocol`，那它**不是一个具体工具**，而是：
+`Model Context Protocol` 不是一个具体工具，而是用于 AI 应用与外部系统交换上下文和能力的协议。MCP 只规定协议交互，不规定宿主应用如何选择或使用 LLM。
 
 > **一种让模型或 Agent 连接外部能力的标准协议。**
 
-它解决的问题是：不同工具、资源、数据源，怎么用**统一方式**接给模型或 Agent。
+MCP 采用 Host / Client / Server 架构：Host 是用户使用的 AI 应用；Host 为每个 Server 创建一个 Client 并维护独立连接；Server 可以在本地或远程运行。
+
+协议基于 JSON-RPC 和能力协商。Server 可暴露 **Tools、Resources、Prompts**；Client 还可按协商能力支持 **Sampling、Elicitation、Logging** 等功能。Resources 和 Prompts 并不等同于 Tool，MCP 也不仅是“模型连接工具”的标准。
 
 **最好的类比**：
 
@@ -103,7 +104,9 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 
 **为什么容易误以为 MCP 就是工具**：因为实际用时你常看到「一个 MCP server 提供很多工具，模型通过 MCP 调用它们」。更准确的说法是：MCP server 里可以包含工具，但 MCP 本身是协议和连接方式。
 
-> **Tool = 具体能力；MCP = 接入这些能力的标准方式。**
+> **Tool 是一种可执行能力；MCP 是 Host、Client 与 Server 交换工具、资源、提示及其他上下文能力的标准协议。**
+
+---
 
 ---
 
@@ -111,13 +114,13 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 
 一句话：
 
-> **最小 Agent = 目标 + 模型 + 工具 + 决策循环 + 输出。**
+> **最小 Agent = 目标 + 模型驱动的控制循环 + 状态/输出；工具是常见但可选的能力。**
 
 | 部件        | 负责什么                                             |
 | ----------- | ---------------------------------------------------- |
 | 1. 目标     | Agent 要完成什么（没有目标就没有后续行动）           |
 | 2. 大模型   | 思考核心：理解目标、判断下一步、决定要不要调工具     |
-| 3. 工具     | 提供外部能力：读文件、搜网页、调库、调 RAG、执行代码 |
+| 3. 工具（可选） | 提供外部能力：读文件、搜网页、调库、调 RAG、执行代码 |
 | 4. 决策循环 | 和普通一次性问答最大的区别（见第 6 章）              |
 | 5. 输出     | 任务完成时把最终结果交付给用户                       |
 
@@ -129,7 +132,7 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 
 **最小 Agent 不需要**：多个 Agent、复杂记忆系统、长期状态管理、规划器、MCP、工作流编排平台。这些都可以后面再加。
 
-> Agent 最小并不复杂。它的核心不是「高级」，而是「会判断并调用工具」。
+> Agent 的核心是由模型根据当前状态决定下一步；`createAgent` 也允许 `tools: []`，此时仍可做无外部动作的迭代或状态处理。
 
 ---
 
@@ -153,7 +156,7 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 
 > **判断 → 行动 → 观察 → 再判断。**
 
-其中「观察工具结果」这一步特别关键——Agent 不是盲目继续，而是要根据真实结果再决定下一步。这条循环就是 Agent 和普通一次性问答的本质差异。这个「思考→行动→观察→再思考」的循环，就叫 **ReAct（Reasoning + Acting）** 模式。
+其中「观察工具结果」这一步特别关键。若实现明确采用交错的 Reasoning / Acting / Observation 提示与轨迹，可以称为 **ReAct**；不能把所有“判断→行动→观察”循环都自动归类为 ReAct。
 
 ---
 
@@ -194,6 +197,8 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 | **5. 工具太多决策乱**             | 工具太多模型选不对               | 工具描述太像、功能重复               | 切换混乱、错误率上升   |
 | **6. 目标太模糊**                 | 不知道什么叫「完成」             | 任务定义太宽、没输出要求             | 循环过长、输出不稳     |
 | **7. 过度相信模型会自己规划好**   | 以为给够工具就能稳定完成复杂任务 | 对能力预期过高、缺约束               | 随机性大、难复现       |
+
+还必须考虑安全与资源边界：工具采用最小权限；不可信网页、文档和工具结果按潜在提示注入处理；高风险副作用需要用户审批；代码执行放入沙箱；为循环次数、耗时、token 和费用设置上限，并记录可审计轨迹。
 
 **初学避坑 5 条**：
 
@@ -252,18 +257,20 @@ Agent 常见会做的事：思考下一步、调用工具、读文件、搜索�
 
 ---
 
-# 第二部分 · LangChain.js v1 实战
+---
 
-## 10. v1 的核心 API：`createAgent`
+## 第二部分 · LangChain.js v1 实战
+
+### 10. v1 的核心 API：`createAgent`
 
 > ⚠️ **最重要的新旧差异**：
 >
 > - ✅ v1 用 **`createAgent`**（从 `langchain` 主包导出）
 > - ❌ **不要用** `initializeAgentExecutorWithOptions` / `AgentExecutor` —— 已废弃
 >
-> `createAgent` 内部基于 LangGraph 实现，自带 ReAct 循环、状态管理、记忆能力。
+> `createAgent` 内部基于 LangGraph 实现，提供工具调用循环和状态管理；传入 checkpointer 后还可以保存线程级短期记忆。具体执行轨迹由模型和配置决定，不应把每次运行都笼统称为 ReAct。
 
-## 11. 定义工具（Tool）
+### 11. 定义工具（Tool）
 
 工具 = 一个带「名字 + 说明 + 参数 schema + 执行函数」的函数。模型靠 **description** 和 **参数描述** 来判断何时调用、怎么传参，所以这两处要写清楚。
 
@@ -310,26 +317,26 @@ const calculator = tool(
 
 > `zod` 是 v1 的标准 schema 库（已是 v4）。`.describe()` 写的说明会传给模型，务必写清楚每个参数含义——这直接决定第 8 章「选错工具」的坑会不会踩。
 
-## 12. 创建并运行 Agent
+### 12. 创建并运行 Agent
 
 ```ts
 import { createAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 
-// 走第三方接口：llm 必须传「模型实例」，不能用 "openai:gpt-4o" 字符串
+// 走第三方接口：model 传「模型实例」，不能用 "openai:gpt-4o" 字符串
 // （字符串形式没法指定 baseURL）
-const llm = new ChatOpenAI({
-  model: process.env.CHAT_MODEL ?? "deepseek-chat",
+const model = new ChatOpenAI({
+  model: process.env.CHAT_MODEL ?? "deepseek-v4-flash",
   temperature: 0,
-  apiKey: process.env.OPENAI_API_KEY,
-  configuration: { baseURL: process.env.OPENAI_BASE_URL },
+  apiKey: process.env.CHAT_API_KEY,
+  configuration: { baseURL: process.env.CHAT_BASE_URL },
 });
 
 const agent = createAgent({
-  llm, // 传配置好的模型实例
+  model, // 传配置好的模型实例
   tools: [getWeather, calculator],
   // 可选：系统提示，定义 agent 的角色和行为准则
-  prompt: "你是一个严谨的助手，需要数据时调用工具，不要凭空猜测数值。",
+  systemPrompt: "你是一个严谨的助手，需要数据时调用工具，不要凭空猜测数值。",
 });
 
 const result = await agent.invoke({
@@ -339,18 +346,18 @@ const result = await agent.invoke({
 // 最终答案是 messages 数组的最后一条
 const messages = result.messages;
 console.log(messages[messages.length - 1].content);
-// → 模型会：调 get_weather(北京)=32 → 调 get_weather(上海)=28 → 调 calculator(32,28,subtract)=4 → "北京比上海热 4°C"
+// 典型情况下，模型会依次查询两地天气，再计算温差；实际调用顺序由模型决定
 ```
 
-> 注意参数名是 **`llm`**（不是老版本的 `model`），另一个是 `tools`。这点实测自 v1 类型定义确认。
+> 在当前 LangChain.js v1 中，`createAgent` 的模型参数名是 **`model`**，系统提示参数名是 **`systemPrompt`**；`tools` 用于传入工具列表。
 
-## 13. 看清 Agent 的思考过程
+### 13. 看清 Agent 的思考过程
 
-`result.messages` 完整记录了整个 ReAct 循环。打印出来能看到模型每一步在干嘛：
+`result.messages` 记录了该次运行中的消息和工具调用结果。打印这些消息可以观察 Agent 的实际执行轨迹：
 
 ```ts
 for (const m of result.messages) {
-  const role = m.getType(); // "human" | "ai" | "tool"
+  const role = m.type; // "human" | "ai" | "tool"
   if (role === "ai" && m.tool_calls?.length) {
     // 模型决定调用工具
     m.tool_calls.forEach((tc) =>
@@ -364,7 +371,7 @@ for (const m of result.messages) {
 }
 ```
 
-典型输出：
+一次可能的输出如下；模型的工具选择、顺序和措辞不保证每次完全一致：
 
 ```
 🤖 决定调用 get_weather({"city":"北京"})
@@ -378,6 +385,8 @@ for (const m of result.messages) {
 
 > 这就是第 8 章说的「可观察性」在代码里的落地——逐条打印，能直接看出是选错工具、还是没用好工具结果、还是循环停不下来。
 
+---
+
 ## 14. 给 Agent 加记忆（多轮对话）
 
 默认每次 `invoke` 互相独立。要让 Agent 记住上下文，用 LangGraph 的 **checkpointer**。
@@ -388,24 +397,25 @@ for (const m of result.messages) {
 import { createAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
+import { randomUUID } from "node:crypto";
 
 const checkpointer = new MemorySaver(); // 内存版，学习用
 
-const llm = new ChatOpenAI({
-  model: process.env.CHAT_MODEL ?? "deepseek-chat",
+const model = new ChatOpenAI({
+  model: process.env.CHAT_MODEL ?? "deepseek-v4-flash",
   temperature: 0,
-  apiKey: process.env.OPENAI_API_KEY,
-  configuration: { baseURL: process.env.OPENAI_BASE_URL },
+  apiKey: process.env.CHAT_API_KEY,
+  configuration: { baseURL: process.env.CHAT_BASE_URL },
 });
 
 const agent = createAgent({
-  llm,
+  model,
   tools: [getWeather],
   checkpointer, // 挂上记忆
 });
 
 // 用同一个 thread_id 的对话会共享记忆
-const config = { configurable: { thread_id: "user-123" } };
+const config = { configurable: { thread_id: randomUUID() } };
 
 await agent.invoke(
   { messages: [{ role: "user", content: "北京天气怎么样？" }] },
@@ -424,7 +434,10 @@ console.log(msgs[msgs.length - 1].content);
 
 - `thread_id` 相同 → 同一会话，共享历史
 - `thread_id` 不同 → 互不干扰的独立会话
-- 生产环境把 `MemorySaver` 换成持久化版（如 `@langchain/langgraph-checkpoint-postgres`），代码结构不变
+- checkpointer 保存的是线程内的短期记忆；跨线程、跨会话的长期记忆需要另行使用 Store
+- `MemorySaver` 只适合本地学习和测试；生产环境可使用数据库 checkpointer（如 PostgreSQL 版本），并完成连接管理、数据迁移、权限隔离和生命周期治理
+
+生产环境中的 `thread_id` 应由服务端根据已认证用户和会话生成，并在读取历史前校验权限，不能直接信任客户端传入的任意值，否则可能造成会话串读。
 
 ## 15. 把 RAG 变成 Agent 的工具（Agentic RAG）
 
@@ -437,12 +450,12 @@ import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { MemoryVectorStore } from "@langchain/classic/vectorstores/memory";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 
-// 第三方接口：聊天模型 + embedding 都指向 baseURL
-const llm = new ChatOpenAI({
-  model: process.env.CHAT_MODEL ?? "deepseek-chat",
+// 聊天模型与 embedding 服务分别配置
+const model = new ChatOpenAI({
+  model: process.env.CHAT_MODEL ?? "deepseek-v4-flash",
   temperature: 0,
-  apiKey: process.env.OPENAI_API_KEY,
-  configuration: { baseURL: process.env.OPENAI_BASE_URL },
+  apiKey: process.env.CHAT_API_KEY,
+  configuration: { baseURL: process.env.CHAT_BASE_URL },
 });
 
 // --- 先建好知识库（同 RAG.md）---
@@ -457,8 +470,8 @@ const store = await MemoryVectorStore.fromDocuments(
   docs,
   new OpenAIEmbeddings({
     model: process.env.EMBEDDING_MODEL ?? "text-embedding-3-small",
-    apiKey: process.env.OPENAI_API_KEY,
-    configuration: { baseURL: process.env.OPENAI_BASE_URL },
+    apiKey: process.env.EMBEDDING_API_KEY,
+    configuration: { baseURL: process.env.EMBEDDING_BASE_URL },
   }),
 );
 const retriever = store.asRetriever({ k: 2 });
@@ -480,25 +493,27 @@ const searchHandbook = tool(
 
 // --- Agent 同时拥有 RAG 工具和天气工具，自主选择 ---
 const agent = createAgent({
-  llm,
+  model,
   tools: [searchHandbook, getWeather], // getWeather 复用前面定义的
-  prompt: "你是公司助手。涉及公司制度的问题，务必先查员工手册再回答。",
+  systemPrompt: "你是公司助手。涉及公司制度的问题，务必先查员工手册再回答。",
 });
 
 const r1 = await agent.invoke({
   messages: [{ role: "user", content: "入职两年有多少天年假？" }],
 });
-// → Agent 自己调用 search_employee_handbook，基于手册回答 "10 天"
+// 典型情况下，Agent 会调用 search_employee_handbook，并基于手册回答“10 天”
 
 const r2 = await agent.invoke({
   messages: [{ role: "user", content: "北京天气如何？" }],
 });
-// → Agent 判断这与手册无关，改调 get_weather
+// 典型情况下，Agent 会判断这与手册无关并调用 get_weather
 ```
 
-**这就是 RAG 和 Agent 的关系落地**：RAG 是 Agent 工具箱里的一件工具，Agent 是决策者。
+DeepSeek 官方聊天 API 不提供与上述 `OpenAIEmbeddings` 用法兼容的 embedding 模型，因此示例把聊天和 embedding 的地址、密钥分开。请把 `EMBEDDING_*` 配置为实际提供向量模型的服务。
 
-## 16. 完整可运行示例
+**在这个 Agentic RAG 设计中**，检索器被包装成 Agent 工具箱里的一件工具，Agent 决定是否调用它；RAG 也可以实现为不经过 Agent 的固定检索链。
+
+## 16. 完整示例
 
 ```ts
 // src/03-agent.ts
@@ -506,6 +521,7 @@ import { createAgent, tool } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { MemorySaver } from "@langchain/langgraph";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 
 const getWeather = tool(
   async ({ city }) => {
@@ -521,21 +537,21 @@ const getWeather = tool(
 );
 
 async function main() {
-  const llm = new ChatOpenAI({
-    model: process.env.CHAT_MODEL ?? "deepseek-chat",
+  const model = new ChatOpenAI({
+    model: process.env.CHAT_MODEL ?? "deepseek-v4-flash",
     temperature: 0,
-    apiKey: process.env.OPENAI_API_KEY,
-    configuration: { baseURL: process.env.OPENAI_BASE_URL },
+    apiKey: process.env.CHAT_API_KEY,
+    configuration: { baseURL: process.env.CHAT_BASE_URL },
   });
 
   const agent = createAgent({
-    llm,
+    model,
     tools: [getWeather],
-    prompt: "你是天气助手，需要气温数据时调用工具。",
+    systemPrompt: "你是天气助手，需要气温数据时调用工具。",
     checkpointer: new MemorySaver(),
   });
 
-  const config = { configurable: { thread_id: "demo-1" } };
+  const config = { configurable: { thread_id: randomUUID() } };
 
   const r1 = await agent.invoke(
     { messages: [{ role: "user", content: "北京和广州哪个更热？" }] },
@@ -573,10 +589,10 @@ main();
 - `Agent = 为完成目标，自己决定步骤并调用工具`
 - `Agent 管决策`
 - `普通模型偏单次回答，Agent 偏多步执行`
-- `最小 Agent = 目标 + 模型 + 工具 + 循环 + 输出`
-- `核心循环：判断 → 行动 → 观察 → 再判断（ReAct）`
+- `最小 Agent = 目标 + 模型 + 控制循环 + 输出；工具按任务需要配置`
+- `工具型 Agent 常见循环：判断 → 行动 → 观察 → 再判断，可采用 ReAct 风格`
 - `工具负责行动，模型负责思考`
-- `没有工具的 Agent 只能「说」，不能「做」`
+- `没有外部工具的 Agent 仍可生成和转换内容，但不能直接访问未提供的外部系统能力`
 - `Workflow = 人定流程；Agent = 模型定下一步`
 - `自动化 ≠ Agent`
 - `Tool = 具体能力；MCP = 接入标准（电器 vs 插座）`
@@ -585,8 +601,8 @@ main();
 - `不要把「会思考」误解成「会稳定执行」`
 - `完成条件要明确，否则循环停不下来`
 - `能用 Workflow / 固定链解决的，就不要先上 Agent`
-- `v1 用 createAgent，参数是 llm + tools，不用 AgentExecutor`
-- `记忆用 checkpointer + thread_id，不用 BufferMemory`
+- `v1 用 createAgent，主要参数是 model + tools，不用 AgentExecutor`
+- `线程内短期记忆用 checkpointer + thread_id；长期记忆另用 Store`
 
 ## 术语表
 
