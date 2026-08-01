@@ -120,7 +120,7 @@ export default defineConfig({
             link: "/src/backend/Go/go基础.md",
           },
           {
-            text: "Python基础",
+            text: "Python",
             link: "/src/backend/Python/Python基础.md",
           },
           {
@@ -309,7 +309,10 @@ export default defineConfig({
             {
               text: "Python",
               items: [
-                { text: "Python", link: "/src/backend/Python/Python基础.md" },
+                {
+                  text: "Python基础",
+                  link: "/src/backend/Python/Python基础.md",
+                },
               ],
             },
             {
@@ -339,7 +342,14 @@ export default defineConfig({
               text: "Vue3常用宏讲解",
               link: "/src/web/vue3常用宏讲解",
             },
-            { text: "Zod", link: "/src/web/Zod学习指南" },
+            {
+              text: "Zod",
+              link: "/src/web/Zod学习指南",
+            },
+            {
+              text: "React常用JS方法",
+              link: "/src/web/React常用JS方法.md",
+            },
             // { text: "正则表达式", link: "/src/web/正则表达式.md" },
           ],
         },
