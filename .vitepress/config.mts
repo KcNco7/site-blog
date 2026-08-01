@@ -120,6 +120,10 @@ export default defineConfig({
             link: "/src/backend/Go/go基础.md",
           },
           {
+            text: "Python基础",
+            link: "/src/backend/Python/Python基础.md",
+          },
+          {
             text: "中间件",
             link: "/src/backend/中间件/docker.md",
           },
@@ -283,6 +287,10 @@ export default defineConfig({
                   text: "Gin",
                   link: "/src/backend/Go/Gin框架.md",
                 },
+                {
+                  text: "GORM",
+                  link: "/src/backend/Go/GORM.md",
+                },
               ],
             },
             {
@@ -296,6 +304,12 @@ export default defineConfig({
                   text: "SpringCloud",
                   link: "/src/backend/Java/SpringCloud.md",
                 },
+              ],
+            },
+            {
+              text: "Python",
+              items: [
+                { text: "Python", link: "/src/backend/Python/Python基础.md" },
               ],
             },
             {
@@ -325,6 +339,7 @@ export default defineConfig({
               text: "Vue3常用宏讲解",
               link: "/src/web/vue3常用宏讲解",
             },
+            { text: "Zod", link: "/src/web/Zod学习指南" },
             // { text: "正则表达式", link: "/src/web/正则表达式.md" },
           ],
         },
