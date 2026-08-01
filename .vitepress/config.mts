@@ -299,7 +299,10 @@ export default defineConfig({
                 { text: "JavaSE", link: "/src/backend/Java/JavaSE.md" },
                 { text: "JavaWeb", link: "/src/backend/Java/JavaWeb.md" },
                 { text: "SpringSSM", link: "/src/backend/Java/SpringSSM.md" },
-                { text: "Springboot", link: "/src/backend/Java/Springboot.md" },
+                {
+                  text: "Springboot",
+                  link: "/src/backend/Java/Springboot4.md",
+                },
                 {
                   text: "SpringCloud",
                   link: "/src/backend/Java/SpringCloud.md",
