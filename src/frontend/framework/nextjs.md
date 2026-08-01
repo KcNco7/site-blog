@@ -3730,3 +3730,180 @@ Content-Type: application/json
     "id": "cmkyoxflr00004ck82ywc6joi"
 }
 ```
+
+## Better Auth 身份集成
+
+Better Auth 是一个面向 TypeScript 的身份认证库，提供邮箱密码、社交登录、Passkey、Organization、Admin 插件等能力。它既可以在 Server Component / Route Handler 中使用服务端 API，也可以通过 `createAuthClient` 在 Client Component 中调用。下面以邮箱密码与 GitHub 第三方登录为例，演示它在 Next.js 16 + Prisma 下的最小接入流程。
+
+### 安装与初始化
+
+1. 安装依赖：
+
+```bash
+pnpm add better-auth
+```
+
+2. 安装 Prisma（详见上一章节）。
+3. 在 `.env` 中准备以下环境变量。`prisma init` 之后会自动生成 `DATABASE_URL`，只需补齐 Better Auth 自己的配置：
+
+```sh
+# 可以手写，也可以用 openssl rand -base64 32 生成
+BETTER_AUTH_SECRET="你的secret"
+# 项目访问地址，本地开发通常是 http://localhost:3000
+BETTER_AUTH_URL=http://localhost:3000
+# Prisma 自带的连接串
+DATABASE_URL="postgresql://postgres:123456@localhost:5432/auth"
+```
+
+`BETTER_AUTH_SECRET` 用于签名 Cookie / Session，不要提交到仓库；生产环境务必使用独立的强随机值。
+
+4. 在 `src/lib/auth.ts` 中创建并导出 `auth` 实例：
+
+```ts
+import { betterAuth } from "better-auth";
+export const auth = betterAuth({
+  // ...
+});
+```
+
+5. 接入 Prisma 适配器。执行 `npx prisma generate` 后，Prisma 会在 `src/generated/prisma` 下生成 `client.ts`，引入它即可：
+
+```ts
+import { betterAuth } from "better-auth"; // 引入 better-auth
+import { prismaAdapter } from "better-auth/adapters/prisma"; // 引入 prisma 适配器
+import { PrismaClient } from "@/generated/prisma/client"; // 引入 prisma 客户端
+import { PrismaPg } from "@prisma/adapter-pg"; // 引入 pgsql 适配器
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL }); // 连接数据库
+const prisma = new PrismaClient({ adapter }); // 创建客户端
+
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, {
+    provider: "postgresql", // 指定数据库类型
+  }),
+  emailAndPassword: {
+    enabled: true, // 开启邮箱密码认证
+  },
+});
+```
+
+6. 生成 Better Auth 所需的数据表：
+
+```sh
+npx @better-auth/cli@latest generate
+```
+
+7. 执行数据库迁移并重新生成 Prisma 客户端：
+
+```sh
+npx prisma migrate dev --name init
+npx prisma generate
+```
+
+8. 挂载 Route Handler。在 `src/app/api/auth/[...all]/route.ts` 中：
+
+```ts
+// src/app/api/auth/[...all]/route.ts
+import { auth } from "@/lib/auth";
+import { toNextJsHandler } from "better-auth/next-js";
+export const { POST, GET } = toNextJsHandler(auth);
+```
+
+9. 创建客户端实例。在 `src/lib/auth-client.ts` 中：
+
+```ts
+import { createAuthClient } from "better-auth/react";
+export const authClient = createAuthClient({
+  baseURL: "http://localhost:3000", // 项目访问地址
+});
+export const { signIn, signUp, signOut, useSession } = authClient;
+```
+
+### 邮箱密码登录
+
+挂载的 `/api/auth/[...all]` 已经暴露了 `/api/auth/sign-up/email`、`/api/auth/sign-in/email`、`/api/auth/sign-out` 等接口，客户端直接调用即可。
+
+注册：
+
+```ts
+"use client";
+import { signUp } from "@/lib/auth-client";
+
+await signUp.email({
+  email: "user@example.com",
+  password: "a-strong-passphrase",
+  name: "用户名",
+});
+```
+
+登录：
+
+```ts
+"use client";
+import { signIn } from "@/lib/auth-client";
+
+await signIn.email({
+  email: "user@example.com",
+  password: "a-strong-passphrase",
+});
+```
+
+在组件里读取当前会话：
+
+```tsx
+"use client";
+import { useSession } from "@/lib/auth-client";
+
+export function UserBadge() {
+  const { data, isPending } = useSession();
+  if (isPending) return <span>加载中…</span>;
+  if (!data?.user) return <span>未登录</span>;
+  return <span>{data.user.email}</span>;
+}
+```
+
+### 第三方登录（以 GitHub 为例）
+
+1. 在 GitHub Developer Settings 创建一个 OAuth App，拿到 `clientId` 与 `clientSecret`，回调地址填写 `${BETTER_AUTH_URL}/api/auth/callback/github`。
+2. 在 `auth.ts` 的 `socialProviders` 中声明：
+
+```ts
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, {
+    provider: "postgresql",
+  }),
+  emailAndPassword: {
+    enabled: true,
+  },
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID as string,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+    },
+  },
+});
+```
+
+`.env` 中补上：
+
+```sh
+GITHUB_CLIENT_ID=xxx
+GITHUB_CLIENT_SECRET=xxx
+```
+
+3. 在客户端触发跳转：
+
+```ts
+"use client";
+import { signIn } from "@/lib/auth-client";
+
+await signIn.social({ provider: "github" });
+```
+
+### 安全与生产部署提示
+
+- `BETTER_AUTH_SECRET` 必须保密，生产部署从环境注入而不是写在仓库里。
+- HTTPS 下确保 `BETTER_AUTH_URL` 使用 `https://` 协议，否则 Cookie 会被浏览器降级处理。
+- 邮箱密码应在前端做基础长度校验（如 ≥12 位），最终强度仍由 Better Auth 在服务端校验。
+- 社交登录的回调域名需要在 OAuth 平台白名单中精确配置。
+- 不要在客户端代码中直接 `import { auth }` 导入服务端实例，所有敏感操作都应走 Route Handler。
