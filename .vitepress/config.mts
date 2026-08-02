@@ -381,8 +381,13 @@ export default defineConfig({
           ],
         },
         {
-          text: "Codex命令总结",
-          link: "/src/AI/Codex命令总结.md",
+          text: "总结",
+          items: [
+            {
+              text: "Codex常用命令",
+              link: "/src/AI/Codex命令总结.md",
+            },
+          ],
         },
       ],
       // 项目总结

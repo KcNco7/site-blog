@@ -7,6 +7,7 @@
 > 全文分两大部分:**一、Spring 容器与 Bean**(注解、注册、启动回调)——讲「类怎么变成 Bean、怎么被管理」;**二、Spring MVC Web**(请求流程、参数、响应、异常)——讲「一个 HTTP 请求进来后怎么被处理」。
 
 > **实战标注说明**:部分章节开头带一个提示块,标明该内容在实际项目里的地位,便于复习时分清主次:
+>
 > - 🟢 **实战常用**:日常开发天天写,必须掌握。
 > - 🟡 **原理向**:框架自动处理,开发者不手写;懂原理有助排错和面试,但代码里碰不到。
 > - 🟠 **有现代替代 / 二选一**:能用,但有更主流的方案,或存在竞争选型,需按场景取舍。
@@ -22,12 +23,12 @@
 
 ### 核心四个
 
-| 注解 | 所在层 | 特殊功能(除了注册 Bean) |
-|------|------|------------------------|
-| `@Component` | 通用 | 最基础的标记,其他三个都是它的特化 |
+| 注解          | 所在层      | 特殊功能(除了注册 Bean)                                                            |
+| ------------- | ----------- | ---------------------------------------------------------------------------------- |
+| `@Component`  | 通用        | 最基础的标记,其他三个都是它的特化                                                  |
 | `@Repository` | 持久层(DAO) | **异常转换标记**:配合异常转换后置处理器,把原生持久化异常转成 `DataAccessException` |
-| `@Service` | 业务层 | 无额外功能,纯语义化标记 |
-| `@Controller` | 表现层 | 配合 `@RequestMapping` 处理 Web 请求,返回视图 |
+| `@Service`    | 业务层      | 无额外功能,纯语义化标记                                                            |
+| `@Controller` | 表现层      | 配合 `@RequestMapping` 处理 Web 请求,返回视图                                      |
 
 它们的元注解组合关系如下:
 
@@ -68,11 +69,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
 不属于「业务分层」构造型,但同样会被扫描注册:
 
-| 注解 | 作用 |
-|------|------|
-| `@Configuration` | 标记配置类,内部可用 `@Bean` 方法定义 Bean(本质也是 `@Component` 特化) |
-| `@Bean` | 方法级注解,把方法返回值注册为 Bean;通常放在 `@Configuration` 类里,也可在其他 Spring 组件中以 lite 模式使用 |
-| `@ComponentScan` | 指定扫描哪些包下的构造型注解 |
+| 注解             | 作用                                                                                                       |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| `@Configuration` | 标记配置类,内部可用 `@Bean` 方法定义 Bean(本质也是 `@Component` 特化)                                      |
+| `@Bean`          | 方法级注解,把方法返回值注册为 Bean;通常放在 `@Configuration` 类里,也可在其他 Spring 组件中以 lite 模式使用 |
+| `@ComponentScan` | 指定扫描哪些包下的构造型注解                                                                               |
 
 ### 关键区别与选用
 
@@ -159,17 +160,16 @@ public class AppConfig {
 
 ### 和 @Bean / @Component 怎么选
 
-| 场景 | 推荐 |
-|------|------|
-| 自己的普通类 | `@Component` |
-| 第三方类、简单定制 | `@Bean` |
-| 需要**按逻辑/环境动态**注册一批 Bean | `BeanRegistrar` |
-| 极底层控制(几乎不用了) | `BeanDefinitionRegistryPostProcessor` |
+| 场景                                 | 推荐                                  |
+| ------------------------------------ | ------------------------------------- |
+| 自己的普通类                         | `@Component`                          |
+| 第三方类、简单定制                   | `@Bean`                               |
+| 需要**按逻辑/环境动态**注册一批 Bean | `BeanRegistrar`                       |
+| 极底层控制(几乎不用了)               | `BeanDefinitionRegistryPostProcessor` |
 
 ## 自定义初始化逻辑
 
 `ApplicationRunner` 和 `CommandLineRunner` 是 Spring Boot 提供的两个启动回调接口,用于在 `SpringApplication.run(...)` 返回前执行启动任务。Spring Boot 会在所有 Runner 执行完后发布 `ApplicationReadyEvent`,并把就绪状态切换为可接收流量。两者主要区别在于「怎么接收命令行参数」。
-
 
 - `CommandLineRunner` 参数:`String... args` 原始字符串数组
 - `ApplicationRunner` 参数:`ApplicationArguments` 封装对象
@@ -206,14 +206,14 @@ flowchart LR
 
 `@RequestMapping` 及其派生注解(`@GetMapping` 等)的路径支持通配符,由 Spring 的 `AntPathMatcher`(传统)/ `PathPattern`(Spring 5.3+ WebFlux 及新版 MVC 默认)解析。
 
-| 通配符 | 含义 | 示例 | 能匹配 | 不能匹配 |
-|------|------|------|------|------|
-| `?` | 匹配**单个字符** | `/user/t?st` | `/user/test`、`/user/tXst` | `/user/teest` |
-| `*` | 匹配**同一层路径**里任意数量字符(不跨 `/`) | `/user/*.html` | `/user/a.html` | `/user/sub/a.html` |
-| `**` | 匹配**任意多层路径**(跨 `/`) | `/user/**` | `/user`、`/user/a`、`/user/a/b/c` | — |
-| `{name}` | 路径变量,配合 `@PathVariable` 取值 | `/user/{id}` | `/user/123`(id=123) | `/user/1/2` |
-| `{name:正则}` | 带正则约束的路径变量 | `/user/{id:\\d+}` | `/user/123` | `/user/abc` |
-| `{*name}` | 捕获**剩余多层路径**到变量(PathPattern) | `/files/{*path}` | `/files/a/b.txt`(path=`/a/b.txt`) | — |
+| 通配符        | 含义                                       | 示例              | 能匹配                            | 不能匹配           |
+| ------------- | ------------------------------------------ | ----------------- | --------------------------------- | ------------------ |
+| `?`           | 匹配**单个字符**                           | `/user/t?st`      | `/user/test`、`/user/tXst`        | `/user/teest`      |
+| `*`           | 匹配**同一层路径**里任意数量字符(不跨 `/`) | `/user/*.html`    | `/user/a.html`                    | `/user/sub/a.html` |
+| `**`          | 匹配**任意多层路径**(跨 `/`)               | `/user/**`        | `/user`、`/user/a`、`/user/a/b/c` | —                  |
+| `{name}`      | 路径变量,配合 `@PathVariable` 取值         | `/user/{id}`      | `/user/123`(id=123)               | `/user/1/2`        |
+| `{name:正则}` | 带正则约束的路径变量                       | `/user/{id:\\d+}` | `/user/123`                       | `/user/abc`        |
+| `{*name}`     | 捕获**剩余多层路径**到变量(PathPattern)    | `/files/{*path}`  | `/files/a/b.txt`(path=`/a/b.txt`) | —                  |
 
 ```java
 @GetMapping("/user/{id:\\d+}")           // id 只能是数字
@@ -227,6 +227,7 @@ public void anyStatic() { ... }
 ```
 
 **要点**:
+
 - 在 Spring 7 的 `PathPattern` 中,一个模式最多只能出现一个 `**` 或 `{*name}`,并且只能放在模式开头或末尾,不能放在中间;非法模式会在解析阶段直接报错。
 - 多个模式都能匹配同一请求时,Spring 使用具体度比较器选择。catch-all 模式优先级最低;其他模式通常先比较 URI 变量与通配符数量,再比较路径长度等条件,不要只把它简化成固定的 `精确 > * > **` 三档规则。
 - 新版本(基于 `PathPattern`)性能更好,且 `{*name}` 这种「捕获剩余路径」的写法只有 `PathPattern` 支持。
@@ -249,12 +250,12 @@ MultipartRequest (Spring 定义的「文件上传能力」接口)
    └──────────────┘ 被 MultipartHttpServletRequest 一并继承
 ```
 
-| 对象 | 定义方 | 作用 |
-|------|------|------|
-| `ServletRequest` / `ServletResponse` | Servlet 规范 | 最底层、协议无关。`getParameter()`、`getInputStream()`、`getWriter()` 等 |
-| `HttpServletRequest` / `HttpServletResponse` | Servlet 规范 | HTTP 特化。请求头、Cookie、Session、状态码、重定向等 |
-| `MultipartRequest` | Spring | 只声明文件上传方法:`getFile()`、`getFileMap()` 等 |
-| `MultipartHttpServletRequest` | Spring | HTTP 能力 + 文件上传能力的合体,处理 `multipart/form-data` 时用 |
+| 对象                                         | 定义方       | 作用                                                                     |
+| -------------------------------------------- | ------------ | ------------------------------------------------------------------------ |
+| `ServletRequest` / `ServletResponse`         | Servlet 规范 | 最底层、协议无关。`getParameter()`、`getInputStream()`、`getWriter()` 等 |
+| `HttpServletRequest` / `HttpServletResponse` | Servlet 规范 | HTTP 特化。请求头、Cookie、Session、状态码、重定向等                     |
+| `MultipartRequest`                           | Spring       | 只声明文件上传方法:`getFile()`、`getFileMap()` 等                        |
+| `MultipartHttpServletRequest`                | Spring       | HTTP 能力 + 文件上传能力的合体,处理 `multipart/form-data` 时用           |
 
 ```java
 @GetMapping("/info")
@@ -277,8 +278,8 @@ public String upload(MultipartHttpServletRequest request) {
 
 > 🟠 **按认证架构选用**:严格的 REST API 强调请求自包含,常使用 JWT 或 opaque token;但“前后端分离”不等于必须使用 JWT。浏览器应用也可以使用服务端 Session + 安全 Cookie。选择时应结合撤销需求、集群部署、CSRF/XSS 防护和客户端类型。
 
-| 对象 | 作用 |
-|------|------|
+| 对象          | 作用                                                                             |
+| ------------- | -------------------------------------------------------------------------------- |
 | `HttpSession` | 服务端会话对象,跨请求保存用户状态(如登录信息)。底层靠 Cookie 里的 SessionID 识别 |
 
 ```java
@@ -300,10 +301,10 @@ public String me(HttpSession session) {
 
 > 🟡 **原理向 / 少用**:有 `@RequestBody` 自动反序列化 JSON,基本用不到手动读写流。只有处理非标准格式、超大文件流式传输、或需完全自控读写时才碰。
 
-| 对象 | 作用 |
-|------|------|
-| `Reader` | 以字符流读请求体(文本) |
-| `InputStream` | 以字节流读请求体(二进制) |
+| 对象                      | 作用                                   |
+| ------------------------- | -------------------------------------- |
+| `Reader`                  | 以字符流读请求体(文本)                 |
+| `InputStream`             | 以字节流读请求体(二进制)               |
 | `Writer` / `OutputStream` | 直接往响应体写数据,绕过视图/消息转换器 |
 
 ```java
@@ -317,13 +318,13 @@ public void raw(Reader reader, Writer writer) throws IOException {
 
 ### 四、Spring MVC 提供的注解(实战首选)
 
-| 注解 | 取值来源 | 典型场景 |
-|------|------|------|
-| `@PathVariable` | URL 路径里的占位符 `{}` | RESTful 风格,资源 id 在路径里 |
-| `@RequestParam` | 查询串 `?k=v` 或表单字段 | 普通查询/表单参数 |
-| `@RequestHeader` | 请求头 | 读取 token、User-Agent、语言等 |
-| `@RequestBody` | 请求体整体(通常 JSON) | 前后端分离,接收 JSON 对象 |
-| `@RequestPart` | `multipart` 请求里的某一部分 | 文件上传 + 同时带 JSON 部分 |
+| 注解             | 取值来源                     | 典型场景                       |
+| ---------------- | ---------------------------- | ------------------------------ |
+| `@PathVariable`  | URL 路径里的占位符 `{}`      | RESTful 风格,资源 id 在路径里  |
+| `@RequestParam`  | 查询串 `?k=v` 或表单字段     | 普通查询/表单参数              |
+| `@RequestHeader` | 请求头                       | 读取 token、User-Agent、语言等 |
+| `@RequestBody`   | 请求体整体(通常 JSON)        | 前后端分离,接收 JSON 对象      |
+| `@RequestPart`   | `multipart` 请求里的某一部分 | 文件上传 + 同时带 JSON 部分    |
 
 ```java
 // @PathVariable —— /user/123
@@ -351,16 +352,16 @@ public String upload(@RequestPart("file") MultipartFile file,
 
 ### 怎么选(核心)
 
-| 需求 | 用哪个 |
-|------|------|
-| id / 资源标识在**路径**里 | `@PathVariable` |
-| 简单查询参数、表单字段(`k=v`) | `@RequestParam` |
-| 需要读**请求头** | `@RequestHeader` |
-| 接收**JSON 对象**(前后端分离最常见) | `@RequestBody` |
-| 纯文件上传 | 参数直接用 `MultipartFile`(可配 `@RequestParam`) |
-| 文件 + JSON 元数据一起传 | `@RequestPart` |
+| 需求                                | 用哪个                                               |
+| ----------------------------------- | ---------------------------------------------------- |
+| id / 资源标识在**路径**里           | `@PathVariable`                                      |
+| 简单查询参数、表单字段(`k=v`)       | `@RequestParam`                                      |
+| 需要读**请求头**                    | `@RequestHeader`                                     |
+| 接收**JSON 对象**(前后端分离最常见) | `@RequestBody`                                       |
+| 纯文件上传                          | 参数直接用 `MultipartFile`(可配 `@RequestParam`)     |
+| 文件 + JSON 元数据一起传            | `@RequestPart`                                       |
 | 需要底层原始请求信息 / 不定数量文件 | `HttpServletRequest` / `MultipartHttpServletRequest` |
-| 完全自定义读写请求响应体 | `Reader` / `Writer` / `InputStream` |
+| 完全自定义读写请求响应体            | `Reader` / `Writer` / `InputStream`                  |
 
 **关键区别**:`@RequestParam` vs `@RequestBody` 最常被搞混——前者读的是 URL 查询串或表单字段(`application/x-www-form-urlencoded`),后者读的是**整个请求体**(通常 `application/json`),一个请求里 `@RequestBody` 只能有一个。
 
@@ -391,13 +392,13 @@ public String upload(@RequestPart("file") MultipartFile file,
 
 Spring 会根据 classpath 和配置注册一批 `HttpMessageConverter`,常见的有:
 
-| Converter | 负责类型 |
-|-----------|------|
+| Converter                         | 负责类型                                         |
+| --------------------------------- | ------------------------------------------------ |
 | `JacksonJsonHttpMessageConverter` | JSON(Boot 4 默认,基于 Jackson 3 的 `JsonMapper`) |
-| `StringHttpMessageConverter` | 纯字符串 |
-| `JacksonXmlHttpMessageConverter` | XML(存在 Jackson XML 依赖时) |
-| `ByteArrayHttpMessageConverter` | byte[] |
-| `FormHttpMessageConverter` | 表单 |
+| `StringHttpMessageConverter`      | 纯字符串                                         |
+| `JacksonXmlHttpMessageConverter`  | XML(存在 Jackson XML 依赖时)                     |
+| `ByteArrayHttpMessageConverter`   | byte[]                                           |
+| `FormHttpMessageConverter`        | 表单                                             |
 
 > Spring 7 中旧的 `MappingJackson2HttpMessageConverter` / `MappingJackson2XmlHttpMessageConverter` 仍可用于 Jackson 2 迁移,但已经弃用并计划移除,不应作为 Boot 4 的默认主线。
 
@@ -446,12 +447,12 @@ public User add(@RequestBody @Valid UserDto dto) { ... }  // 转换后紧接着�
 
 ### 和 @RequestParam 的原理区别
 
-| | `@RequestBody` | `@RequestParam` |
-|---|---|---|
-| 数据来源 | 请求体(body) | URL 查询串 / 表单字段 |
-| 处理组件 | `HttpMessageConverter`(Jackson) | `WebDataBinder` + 类型转换 |
-| 读取方式 | 读整个 body 输入流反序列化 | 从已解析好的 parameterMap 取值 |
-| 典型 Content-Type | `application/json` | `application/x-www-form-urlencoded` |
+|                   | `@RequestBody`                  | `@RequestParam`                     |
+| ----------------- | ------------------------------- | ----------------------------------- |
+| 数据来源          | 请求体(body)                    | URL 查询串 / 表单字段               |
+| 处理组件          | `HttpMessageConverter`(Jackson) | `WebDataBinder` + 类型转换          |
+| 读取方式          | 读整个 body 输入流反序列化      | 从已解析好的 parameterMap 取值      |
+| 典型 Content-Type | `application/json`              | `application/x-www-form-urlencoded` |
 
 ## @ResponseBody 原理
 
@@ -509,10 +510,10 @@ jsonMapper.writeValue(outputMessage.getBody(), returnValue);  // 对象 → 响�
 
 ### 一句话对照
 
-| | 方向 | converter 方法 | 依据的头 | Jackson 调用 |
-|---|---|---|---|---|
-| `@RequestBody` | 请求体 → 对象(反序列化) | `canRead` / `read` | `Content-Type` | `JsonMapper.readValue` |
-| `@ResponseBody` | 对象 → 响应体(序列化) | `canWrite` / `write` | `Accept` | `JsonMapper.writeValue` |
+|                 | 方向                    | converter 方法       | 依据的头       | Jackson 调用            |
+| --------------- | ----------------------- | -------------------- | -------------- | ----------------------- |
+| `@RequestBody`  | 请求体 → 对象(反序列化) | `canRead` / `read`   | `Content-Type` | `JsonMapper.readValue`  |
+| `@ResponseBody` | 对象 → 响应体(序列化)   | `canWrite` / `write` | `Accept`       | `JsonMapper.writeValue` |
 
 两者共用同一套 `HttpMessageConverter` 体系和同一个 `RequestResponseBodyMethodProcessor`,只是一进一出。用 `@RestController` 时,`@ResponseBody` 已默认加在所有方法上,无需再显式写。
 
@@ -526,10 +527,10 @@ jsonMapper.writeValue(outputMessage.getBody(), returnValue);  // 对象 → 响�
 
 `ResponseEntity` 作为返回值时,不需要再加 `@ResponseBody`,它的响应体部分照样走 `HttpMessageConverter` 序列化(JSON 场景还是 Jackson),只是额外带上了你指定的状态码和头。
 
-| | 能定制状态码 | 能定制响应头 | 响应体转换 |
-|---|---|---|---|
+|                                     | 能定制状态码                                        | 能定制响应头   | 响应体转换             |
+| ----------------------------------- | --------------------------------------------------- | -------------- | ---------------------- |
 | `@ResponseBody` / `@RestController` | 注解本身不指定(默认通常 200,可配 `@ResponseStatus`) | 注解本身不指定 | `HttpMessageConverter` |
-| `ResponseEntity<T>` | 是 | 是 | `HttpMessageConverter` |
+| `ResponseEntity<T>`                 | 是                                                  | 是             | `HttpMessageConverter` |
 
 ### 三种写法
 
@@ -564,14 +565,14 @@ public ResponseEntity<Void> delete(@PathVariable Long id) {
 
 ### 常用快捷方法
 
-| 方法 | 对应状态码 | 场景 |
-|------|------|------|
-| `ResponseEntity.ok(body)` | 200 | 正常返回数据 |
-| `ResponseEntity.status(...)` | 自定义 | 起点,后接 `.header()` / `.body()` |
-| `ResponseEntity.created(uri)` | 201 | 新增资源成功,`Location` 指向新资源 |
-| `ResponseEntity.noContent().build()` | 204 | 删除/更新成功但无返回体 |
-| `ResponseEntity.badRequest().body(...)` | 400 | 参数错误 |
-| `ResponseEntity.notFound().build()` | 404 | 资源不存在 |
+| 方法                                    | 对应状态码 | 场景                               |
+| --------------------------------------- | ---------- | ---------------------------------- |
+| `ResponseEntity.ok(body)`               | 200        | 正常返回数据                       |
+| `ResponseEntity.status(...)`            | 自定义     | 起点,后接 `.header()` / `.body()`  |
+| `ResponseEntity.created(uri)`           | 201        | 新增资源成功,`Location` 指向新资源 |
+| `ResponseEntity.noContent().build()`    | 204        | 删除/更新成功但无返回体            |
+| `ResponseEntity.badRequest().body(...)` | 400        | 参数错误                           |
+| `ResponseEntity.notFound().build()`     | 404        | 资源不存在                         |
 
 **要点**:
 
@@ -609,11 +610,11 @@ Spring Boot 有一套开箱即用的默认异常处理,核心是 `BasicErrorCont
 
 Spring MVC 默认异常解析链中的三个核心 Resolver 如下,通常按此顺序尝试。Spring Boot 还会加入用于记录错误属性、支持 `/error` 的组件;开启 Problem Details 后也会额外配置 Advice:
 
-| Resolver | 负责什么 |
-|----------|------|
-| `ExceptionHandlerExceptionResolver` | 处理 `@ExceptionHandler` 标注的方法(**全局异常处理器的底层就靠它**) |
-| `ResponseStatusExceptionResolver` | 处理带 `@ResponseStatus` 的异常,或 `ResponseStatusException`,按其指定的状态码响应 |
-| `DefaultHandlerExceptionResolver` | 处理 Spring MVC 自身的标准异常(如 `HttpRequestMethodNotSupportedException` → 405) |
+| Resolver                            | 负责什么                                                                          |
+| ----------------------------------- | --------------------------------------------------------------------------------- |
+| `ExceptionHandlerExceptionResolver` | 处理 `@ExceptionHandler` 标注的方法(**全局异常处理器的底层就靠它**)               |
+| `ResponseStatusExceptionResolver`   | 处理带 `@ResponseStatus` 的异常,或 `ResponseStatusException`,按其指定的状态码响应 |
+| `DefaultHandlerExceptionResolver`   | 处理 Spring MVC 自身的标准异常(如 `HttpRequestMethodNotSupportedException` → 405) |
 
 处理流程:
 
@@ -722,13 +723,13 @@ class TypeScopedAdvice { }
 
 标准字段:
 
-| 字段 | 含义 |
-|------|------|
-| `type` | 标识错误类型的 URI(默认 `about:blank`),可指向一份错误文档 |
-| `title` | 错误类型的简短人类可读标题 |
-| `status` | HTTP 状态码(和响应状态一致) |
-| `detail` | 本次错误的具体说明 |
-| `instance` | 出问题的具体资源 URI(通常是请求路径) |
+| 字段       | 含义                                                      |
+| ---------- | --------------------------------------------------------- |
+| `type`     | 标识错误类型的 URI(默认 `about:blank`),可指向一份错误文档 |
+| `title`    | 错误类型的简短人类可读标题                                |
+| `status`   | HTTP 状态码(和响应状态一致)                               |
+| `detail`   | 本次错误的具体说明                                        |
+| `instance` | 出问题的具体资源 URI(通常是请求路径)                      |
 
 还能通过 `properties` 塞任意自定义字段(如 `errorCode`、`traceId`),标准字段 + 扩展字段兼得。典型响应体:
 
@@ -910,12 +911,12 @@ GET /api/2.0/user/1
 
 ### 策略选择
 
-| 方式 | 示例 | 主要特点 |
-|------|------|------|
-| 请求头 | `X-API-Version: 2.0` | URL 稳定,但普通地址栏不便直接设置请求头 |
-| 查询参数 | `?version=2.0` | 调试直观,但版本进入查询串 |
-| 媒体类型参数 | `Accept: application/json;version=2.0` | 与内容协商结合,客户端配置相对复杂 |
-| 路径段 | `/api/2.0/user/1` | 版本最直观,但不同版本使用不同 URI |
+| 方式         | 示例                                   | 主要特点                                |
+| ------------ | -------------------------------------- | --------------------------------------- |
+| 请求头       | `X-API-Version: 2.0`                   | URL 稳定,但普通地址栏不便直接设置请求头 |
+| 查询参数     | `?version=2.0`                         | 调试直观,但版本进入查询串               |
+| 媒体类型参数 | `Accept: application/json;version=2.0` | 与内容协商结合,客户端配置相对复杂       |
+| 路径段       | `/api/2.0/user/1`                      | 版本最直观,但不同版本使用不同 URI       |
 
 **统一建议**:对外公开的同一套 API 应明确一种主策略并写入契约。迁移期确实需要同时兼容旧、新策略时可以组合 Resolver,但要明确解析顺序和退役计划,避免长期产生歧义。
 
