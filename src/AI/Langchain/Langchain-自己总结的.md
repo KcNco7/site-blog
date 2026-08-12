@@ -1,12 +1,43 @@
-# Langchain
+# LangChain
+
+::: info 版本基线
+
+本文主要使用 **TypeScript / JavaScript**，已按 **2026-08-12** 的公开版本和官方文档核对：
+
+- `langchain@1.5.4`
+- `@langchain/core@1.2.3`
+- `@langchain/openai@1.5.5`
+- `@langchain/langgraph@1.4.8`
+- Node.js `20+`
+
+LangChain 各包独立发布，具体最新版仍应以 npm 和当前官方文档为准。安装多个 LangChain 包时，要确保它们解析到兼容的同一份 `@langchain/core`。
+
+本文主要示例至少会用到：
+
+```bash
+pnpm add langchain @langchain/core @langchain/openai @langchain/langgraph zod dotenv
+```
+
+RAG 小节还会按需安装 `@langchain/classic`、`@langchain/textsplitters`、Loader 或具体 Vector Store 的集成包。不要强行让所有 LangChain 包使用相同版本号；让包管理器检查 peer dependencies，并提交 lockfile。
+
+本文使用以下 VitePress 标记：
+
+- `danger`：当前 API/包已明确弃用、正在 sunset，或存在严重迁移风险；新代码不要使用。
+- `warning`：目前还能使用，但已不是新项目的优先写法，或存在版本兼容风险。
+- `tip`：面对当前版本时优先采用的写法。
+
+- [LangChain npm](https://www.npmjs.com/package/langchain)
+- [LangChain v1 迁移指南](https://docs.langchain.com/oss/javascript/migrate/langchain-v1)
+
+:::
 
 ## LangChain介绍
 
-::: danger 什么是Langchain?
+::: tip 什么是 LangChain？
 
 > 提问: 公司年假制度是什么？
 
-如果是普通对话框，大模型可能靠自己猜。如果是 LangChain 做的知识库：
+如果只把问题交给模型，它可能缺少公司的私有资料。下面是一个用 LangChain 组件编排的 RAG（检索增强生成）例子：
 
 1. LangChain 收到问题
 2. 去公司 PDF 文档里检索“年假制度”
@@ -16,6 +47,8 @@
 6. 返回答案和来源
 
 LangChain 负责自动化流程，大模型负责理解和生成答案。你学LangChain，本质是在学: 如何用程序控制大模型完成真实任务。
+
+> 这只是 LangChain 的一种用途。LangChain 不等于知识库，也不等于 RAG；它是模型、消息、工具、Agent、检索和 Middleware 等组件的应用框架。
 
 :::
 
@@ -35,15 +68,23 @@ LangChain 生态包含多个职责不同的项目：
 - Runnables / LCEL：组合可执行组件
 - Middleware / Memory：控制 Agent 上下文和短期、长期状态
 
+::: tip 三种入口怎么选
+
+- 步骤固定、结果可预测：普通 TypeScript 或 Runnable/LCEL。
+- 让模型在工具之间动态选择：`createAgent`。
+- 需要显式节点、分支、循环、暂停和恢复：直接使用 LangGraph。
+
+:::
+
 ## Agent工作机制
 
 An AI agent is a system that uses an LLM to decide the control flow of an application. (Agent是一种使用大语言模型（LLM）来决定应用程序控制流的系统。)
 
-| 特性     | 传统聊天机器人 / LLM   | AI Agent                       |
-| -------- | ---------------------- | ------------------------------ |
-| 交互模式 | 通常按输入生成响应 | 可在受控循环中决定后续步骤 |
+| 特性     | 传统聊天机器人 / LLM       | AI Agent                       |
+| -------- | -------------------------- | ------------------------------ |
+| 交互模式 | 通常按输入生成响应         | 可在受控循环中决定后续步骤     |
 | 执行力   | 可生成文本或结构化工具调用 | 在应用授权的工具范围内执行动作 |
-| 自主性   | 由调用方编排流程 | 可在迭代、权限和审批边界内规划 |
+| 自主性   | 由调用方编排流程           | 可在迭代、权限和审批边界内规划 |
 
 传统LLM:
 ![LLM](/assert/image-langchain/LLM.png)
@@ -53,12 +94,18 @@ Agent模式:
 具体流程如下：
 
 1. 用户提问（Input）：杭州今天天气如何？
-2. 模型分析（Reasoning）：用户询问杭州天气，我不知道，需要调用查询天气的工具get_weather
-3. 调用工具（Action）：调用工具，get_weather，传入城市"杭州"
-4. 分析结果（Observation）：工具返回结果，模型分析结果，判断是否足以回答用户问题
+2. 模型决策（Decision）：模型返回结构化 `tool_call`，例如工具名 `get_weather`、参数 `{ city: "杭州" }`
+3. Agent 执行（Action）：运行时校验参数并执行已注册的 `get_weather`
+4. 工具结果（Observation）：运行时把结果封装为 `ToolMessage` 交回模型；模型判断是否足以回答
    - 是：整理生成响应结果
    - 否：重复前面步骤
 5. 生成结果（Output）：根据工具的结果生成响应给用户
+
+::: warning 不要解析“思维链”控制程序
+
+程序应依赖 `tool_calls`、消息、状态和事件流等结构化数据，而不是从模型自然语言中的“分析过程”猜测下一步动作。
+
+:::
 
 > 模型是如何知道工具的信息的呢？
 
@@ -67,6 +114,12 @@ Agent模式:
 > 当大模型决定调用某个tool时，该如何调用呢？
 
 模型服务不会直接执行本地函数，而是返回结构化的工具调用请求。现代 LangChain `AIMessage` 会把这些请求规范化到 `tool_calls` 等字段，而不是要求应用从普通 JSON 字符串中自行猜测。Agent 运行时校验参数、调用已注册工具，再把 `ToolMessage` 结果交回模型继续判断。
+
+::: warning Tool schema 不是安全边界
+
+Zod schema 负责输入形状校验；工具实现仍必须自己处理鉴权、权限控制、超时、限额、幂等和业务校验。
+
+:::
 
 ![Langchain的主要的工作流程](/assert/image-langchain/Langchain的主要的工作流程.png)
 
@@ -95,15 +148,18 @@ LangChain支持现在市面上大部分的大语言模型（LLM），并且提�
 import "dotenv/config";
 import { ChatOpenAI } from "@langchain/openai";
 
-const baseUrl = process.env.DASHSCOPE_BASE_URL;
-const apiKey = process.env.DASHSCOPE_API_KEY;
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`缺少环境变量：${name}`);
+  return value;
+}
 
 // 初始化模型
 const model = new ChatOpenAI({
   model: "qwen-plus",
-  apiKey: apiKey,
+  apiKey: requireEnv("DASHSCOPE_API_KEY"),
   configuration: {
-    baseURL: baseUrl,
+    baseURL: requireEnv("DASHSCOPE_BASE_URL"),
   },
   temperature: 0.7,
 });
@@ -112,7 +168,7 @@ const model = new ChatOpenAI({
 async function main() {
   // 非流式调用：一次性返回完整结果
   const response = await model.invoke("你是谁?");
-  console.log(response.content); // response 是一条 AIMessage
+  console.log(response.text); // AIMessage.text 是统一的纯文本视图
 
   // 流式调用：逐步返回 AIMessageChunk
   const stream = await model.stream("你是谁?");
@@ -153,11 +209,19 @@ for chunk in stream:
     print(chunk.content, end='',flush=True)
 ```
 
-在langchain的社区，除了langchain官方提供的Model，还有些类是社区提供，更丰富多样。具体支持的模型，可以查看官网地址：https://docs.langchain.com/oss/python/integrations/chat
+不同模型提供商通常通过独立集成包接入。JavaScript 支持的模型请查看：[LangChain JavaScript Chat Model 集成](https://docs.langchain.com/oss/javascript/integrations/chat)。
+
+::: warning OpenAI 兼容不等于能力完全一致
+
+第三方服务虽然采用 OpenAI 兼容协议，但不保证完整支持工具调用、结构化输出、多模态、流式事件和 usage metadata。接入后应分别验证项目真正需要的能力。
+
+本文为突出 LangChain API，后续较短示例有时会直接写 `process.env.DASHSCOPE_API_KEY`。真实项目应统一使用前面 `requireEnv()` 这类启动时校验；不要把缺失配置留到第一次模型请求才发现。
+
+:::
 
 ### 在Agent中使用模型
 
-上述代码是直接调用模型，而不是通过智能体调用模型。要想在智能体中使用模型，需要使用 `createAgent`。
+上述代码是直接调用模型，而不是通过智能体调用模型。当前高层 Agent 的推荐入口是 `createAgent`；如果需要完全自定义控制流，也可以手写工具循环或直接使用 LangGraph `StateGraph`。
 
 LangChain 提供了一个 `createAgent` 用来快速创建智能体。当我们创建 Agent 的时候，可以直接传入已经初始化好的 `model`，也可以指定模型名，让 LangChain 自动初始化模型。
 
@@ -174,17 +238,19 @@ LangChain 提供了一个 `createAgent` 用来快速创建智能体。当我们�
 import "dotenv/config";
 import { ChatOpenAI } from "@langchain/openai";
 import { createAgent } from "langchain";
-import { HumanMessage } from "@langchain/core/messages";
 
-const baseUrl = process.env.DASHSCOPE_BASE_URL;
-const apiKey = process.env.DASHSCOPE_API_KEY;
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`缺少环境变量：${name}`);
+  return value;
+}
 
 // 初始化模型
 const model = new ChatOpenAI({
   model: "qwen-plus",
-  apiKey: apiKey,
+  apiKey: requireEnv("DASHSCOPE_API_KEY"),
   configuration: {
-    baseURL: baseUrl,
+    baseURL: requireEnv("DASHSCOPE_BASE_URL"),
   },
 });
 
@@ -192,25 +258,26 @@ async function main() {
   // 创建 Agent（不带工具的简单版本）
   const agent = createAgent({
     // 使用已经创建好的模型
-    model: model,
+    model,
     tools: [], // 可以在这里添加工具
   });
 
   // 调用 Agent
   // invoke 非流式调用：返回的是 Agent 状态，而不是单条 AIMessage
   const response = await agent.invoke({
-    messages: [new HumanMessage("你是谁?")],
+    messages: [{ role: "user", content: "你是谁？" }],
   });
 
   console.log(response);
   // 获取最终回答
-  console.log(
-    "\n最终回答:",
-    response.messages[response.messages.length - 1].content,
-  );
+  const finalMessage = response.messages.at(-1);
+  if (!finalMessage) {
+    throw new Error("Agent 没有返回消息");
+  }
+  console.log("\n最终回答:", finalMessage.text);
 }
 
-main();
+main().catch(console.error);
 ```
 
 ```python
@@ -246,19 +313,30 @@ print(response["messages"][-1].content)
 ```ts
 const stream = await agent.stream(
   {
-    messages: [new HumanMessage("你是谁?")],
+    messages: [{ role: "user", content: "你是谁？" }],
   },
   {
     streamMode: "messages",
   },
 );
 
-for await (const [token, metadata] of stream) {
+for await (const [token] of stream) {
   if (token.text) {
     process.stdout.write(token.text);
   }
 }
 ```
+
+::: tip Agent 的流式接口怎么选
+
+- `streamMode: "messages"`：显示模型 token；
+- `streamMode: "updates"`：显示模型调用、工具执行等步骤更新；
+- `streamMode: "custom"`：显示工具或节点主动发送的自定义进度；
+- 构建复杂前端事件流时，可以进一步了解 `streamEvents(..., { version: "v3" })`；但 1.5.x Reference 仍将 v3 标为实验性，不能把事件形状当作稳定协议长期依赖。
+
+[当前 Streaming 文档](https://docs.langchain.com/oss/javascript/langchain/streaming)
+
+:::
 
 ```python
 response = agent.stream({
@@ -278,9 +356,9 @@ for token,metadata in response:
 
 ## 消息（Messages）
 
-在调用模型时，发送给LLM的消息、LLM返回的消息都包含以下几部分内容：
+在调用模型时，发送给 LLM 的消息和 LLM 返回的消息通常包含以下几部分内容：
 
-- `role`：消息所属角色，可以是system、user、assistant
+- `role`：常见角色包括 `system`、`user`、`assistant` 和 `tool`，也可能存在提供商或应用自定义角色
 - `content`：消息的内容
 - 消息 ID、`response_metadata`、`usage_metadata` 等是不同字段；token 用量通常位于 `usage_metadata`，且是否存在取决于提供商返回的数据，不应统一笼统称为 `metadata`
 
@@ -299,63 +377,73 @@ for token,metadata in response:
 import "dotenv/config";
 import { ChatOpenAI } from "@langchain/openai";
 import { createAgent, tool } from "langchain";
-import {
-  SystemMessage,
-  HumanMessage,
-  AIMessage,
-} from "@langchain/core/messages";
-import { z } from "zod";
+import * as z from "zod";
 
-const baseUrl = process.env.DASHSCOPE_BASE_URL;
-const apiKey = process.env.DASHSCOPE_API_KEY;
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`缺少环境变量：${name}`);
+  }
+  return value;
+}
 
 const getWeatherTool = tool(
-  async ({ local }) => {
-    return `Current weather in ${local} is sunny`;
+  async ({ city }) => {
+    // 教学示例使用假数据；真实项目在这里调用天气 API。
+    return `${city} 当前天气晴朗`;
   },
   {
     name: "get_weather",
-    description: "Get weather data",
+    description: "查询指定城市的当前天气",
     schema: z.object({
-      local: z.string().describe("city name"),
+      city: z.string().trim().min(1).describe("城市名称，例如：广州"),
     }),
   },
 );
 
 const model = new ChatOpenAI({
-  model: "qwen-plus",
-  apiKey: apiKey,
+  model: process.env.DASHSCOPE_MODEL ?? "qwen-plus",
+  apiKey: requireEnv("DASHSCOPE_API_KEY"),
   configuration: {
-    baseURL: baseUrl,
+    baseURL: requireEnv("DASHSCOPE_BASE_URL"),
   },
 });
 
 async function main() {
   const agent = createAgent({
-    model: model,
+    model,
     tools: [getWeatherTool],
+    prompt: "需要实时天气时必须调用 get_weather，不要编造天气。",
   });
 
   const response = await agent.invoke({
-    messages: [
-      new SystemMessage("请使用工具获取天气"),
-      new HumanMessage("你好我是小爱同学"),
-      new AIMessage("你好,小爱同学!很高兴认识你"),
-      new HumanMessage("今天广州天气如何?"),
-    ],
+    messages: [{ role: "user", content: "今天广州天气如何？" }],
   });
 
   console.log("\n=== 完整对话历史 ===\n");
-  // Agent的返回结果中包含完整的消息列表（Messages）
   for (const message of response.messages) {
-    console.log(`[${message._getType()}]`);
-    console.log(message.content);
+    console.log(`[${message.type}] ${message.text}`);
+    if ("tool_calls" in message) {
+      console.log("工具调用：", message.tool_calls);
+    }
     console.log("---");
   }
 }
 
-main();
+main().catch(console.error);
 ```
+
+::: danger 已弃用：`message._getType()`
+
+`BaseMessage._getType()` 在当前 `@langchain/core` 中已经标记为 deprecated。新代码读取 `message.type`：
+
+```ts
+console.log(message.type);
+```
+
+[BaseMessage 当前 API](https://reference.langchain.com/javascript/langchain-core/messages/BaseMessage)
+
+:::
 
 ```python
 import os
@@ -403,23 +491,48 @@ for message in response["messages"]:
 
 ## 多模态
 
-LangChain 支持向模型发送多模态消息，比如图片、音频、视频、文本等。但前提是必须是多模态模型才支持。
+LangChain 消息可以使用标准内容块表达文本、图片等多模态输入；最终支持哪些内容类型、文件格式和大小，仍由具体模型提供商决定。
+
+```ts
+import { HumanMessage } from "@langchain/core/messages";
+
+const message = new HumanMessage({
+  contentBlocks: [
+    { type: "text", text: "请描述这张图片。" },
+    { type: "image", url: "https://example.com/image.jpg" },
+  ],
+});
+
+const response = await model.invoke([message]);
+console.log(response.text);
+```
+
+::: warning “OpenAI 兼容”不代表多模态能力完全兼容
+
+发送前仍要核对模型是否支持该内容块、URL 是否能被服务访问、MIME 类型和大小限制，以及外部图片的隐私风险。
+
+:::
 
 ## 提示词（Prompts）
 
 ### 系统提示词
 
+::: danger JavaScript 1.5.x：`systemPrompt` 已弃用
+
+当前 JavaScript API Reference 已将 `CreateAgentParams.systemPrompt` 标为 deprecated。新代码使用 `prompt`。部分较早的 v1 指南页面还没有完全同步，仍可能看到 `systemPrompt`；Python 的 `system_prompt` 是另一套 API，不受这一项影响。
+
+- [createAgent API Reference](https://reference.langchain.com/javascript/langchain/index/createAgent)
+- [CreateAgentParams API Reference](https://reference.langchain.com/javascript/langchain/index/CreateAgentParams)
+
+:::
+
 ```ts
 import { createAgent } from "langchain";
-import { ChatDeepSeek } from "@langchain/deepseek";
 
 const agent = createAgent({
-  model: new ChatDeepSeek({
-    model: "deepseek-v4-flash",
-    temperature: 0,
-  }),
+  model,
   tools: [],
-  systemPrompt: "像海盗一样说话。",
+  prompt: "像海盗一样说话。",
 });
 
 for await (const [token] of await agent.stream(
@@ -430,18 +543,41 @@ for await (const [token] of await agent.stream(
     streamMode: "messages",
   },
 )) {
-  if (typeof token.content === "string") {
-    process.stdout.write(token.content);
-    continue;
-  }
-
-  for (const block of token.contentBlocks ?? []) {
-    if (block.type === "text") {
-      process.stdout.write(block.text);
-    }
-  }
+  process.stdout.write(token.text);
 }
 ```
+
+#### 动态系统提示词与运行时 Context
+
+提示词依赖本次调用的用户级别、语言或租户信息时，可以声明 `contextSchema`，再让 `prompt` 根据只读 context 动态生成。Context 只属于本次 `invoke()`，不会被 checkpointer 持久化。
+
+```ts
+import { createAgent } from "langchain";
+import * as z from "zod";
+
+const TutorContext = z.object({
+  level: z.enum(["beginner", "advanced"]),
+});
+
+const tutor = createAgent({
+  model,
+  tools: [],
+  contextSchema: TutorContext,
+  prompt: (_state, runtime) =>
+    `你是中文编程老师。学生水平：${runtime.context.level}。`,
+});
+
+await tutor.invoke(
+  {
+    messages: [{ role: "user", content: "解释 Promise。" }],
+  },
+  {
+    context: { level: "beginner" },
+  },
+);
+```
+
+[Runtime 与 Context](https://docs.langchain.com/oss/javascript/langchain/runtime)
 
 python版本:
 
@@ -451,7 +587,7 @@ from langchain.messages import HumanMessage
 
 # 创建智能体
 agent = create_agent(
-    model = "deepseek:deepseek-v4-flash",
+    model=model,
     system_prompt="像海盗一样说话."
 )
 
@@ -494,7 +630,7 @@ async function name() {
     gender: "女儿",
   });
 
-  console.log(res.content);
+  console.log(res.text);
 }
 
 name();
@@ -523,7 +659,7 @@ const examples = [
 // 创建 few-shot 模板
 const fewShotPromptTemplate = new FewShotPromptTemplate({
   examplePrompt: exampleTemplate, // 示例数据模板
-  examples: examples, // (或简写为 examples) 示例数据
+  examples, // 示例数据
   prefix: "给出给定词的反义词，有如下示例:", // 示例之前的提示词
   suffix: "基于示例告诉我: {inputword}的反义词是?", // 示例之后的提示词
   inputVariables: ["inputword"], // 声明在前缀或者后缀中所需要注入的变量名
@@ -531,7 +667,7 @@ const fewShotPromptTemplate = new FewShotPromptTemplate({
 
 // 得到提示词
 const promptText = await fewShotPromptTemplate.invoke({ inputword: "left" });
-console.log(JSON.stringify(promptText.toString()));
+console.log(promptText.toString());
 
 // 访问模型
 const model = new ChatOpenAI({
@@ -542,22 +678,25 @@ const model = new ChatOpenAI({
   model: "qwen-plus",
 });
 const response = await model.invoke(promptText);
-console.log(response.content);
-// console.log(JSON.stringify(response.content));
+console.log(response.text);
 ```
 
-### 模板类的`format`与`invoke`方法
+### 模板类的格式化方法与 Runnable 方法
 
-`PromptTemplate`和`FewShotPromptTemplate`以及`ChatPromptTemplate`都拥有`format`和`invoke`方法.
+| 调用                                                                   | 返回值                   | 适合用途                                  |
+| ---------------------------------------------------------------------- | ------------------------ | ----------------------------------------- |
+| `PromptTemplate.format(input)` / `FewShotPromptTemplate.format(input)` | `Promise<string>`        | 查看最终字符串                            |
+| `ChatPromptTemplate.format(input)`                                     | `Promise<string>`        | 查看聊天 Prompt 的字符串表示              |
+| `ChatPromptTemplate.formatMessages(input)`                             | `Promise<BaseMessage[]>` | 直接检查格式化后的角色消息                |
+| 任意 Prompt 的 `.invoke(input)`                                        | `Promise<PromptValue>`   | 走统一 Runnable 接口，继续 `.pipe(model)` |
 
-|        | format                             | invoke                                                            |
-| ------ | ---------------------------------- | ----------------------------------------------------------------- |
-| 功能   | 纯字符串替换，解析占位符生成提示词 | Runnable接口标准方法，解析占位符生成提示词                        |
-| 返回值 | `string`                           | `PromptValue` 对象                                                |
-| 传参   | `.format({ k: v, k: v })`          | `.invoke({ k: v, k: v })`                                         |
-| 解析   | 支持解析 `{variable}` 占位符       | 返回对应 PromptValue；`MessagesPlaceholder` 只在由 `ChatPromptTemplate` 声明并传入相应消息变量时生效 |
+`PromptTemplate.invoke()` 返回 `StringPromptValue`；`ChatPromptTemplate.invoke()` 返回 `ChatPromptValue`。两者都可以直接作为模型输入。
 
-`FewShotPromptTemplate` --> `BaseStringPromptTemplate` --> `BasePromptTemplate` --> `Runnable`
+::: tip 学习公开接口，不要依赖内部继承层级
+
+Prompt 实现 Runnable，因此可以使用 `invoke`、`batch`、`stream`、`pipe`、`withConfig` 等组合能力。内部继承链和对象完整快照可能随版本调整，不应成为业务代码依赖。
+
+:::
 
 ```ts
 import { FewShotPromptTemplate, PromptTemplate } from "@langchain/core/prompts";
@@ -566,25 +705,25 @@ const res = await template.format({ name: "张大明", hobby: "看电影" });
 console.log(res, typeof res); // 我的邻居是张大明,最喜欢看电影 string
 
 const resInvoke = await template.invoke({ name: "李四", hobby: "吃饭" });
-console.log(resInvoke, typeof resInvoke);
-/**
- * StringPromptValue {
-  lc_serializable: true,
-  lc_kwargs: { value: '我的邻居是李四,最喜欢吃饭' },
-  lc_namespace: [ 'langchain_core', 'prompt_values' ],
-  value: '我的邻居是李四,最喜欢吃饭'
-} object
- */
+console.log(resInvoke.toString());
 ```
 
 ### ChatPromptTemplate
 
 - `PromptTemplate`:通用提示词模板，支持动态注入信息。
 - `FewShotPromptTemplate`:支持基于模板注入任意数量的示例信息。
-- `ChatPromptTemplate`:支持注入任意数量的历史会话信息。
+- `ChatPromptTemplate`：构造由多条消息组成的聊天提示词。
+- `MessagesPlaceholder`：把一组消息注入模板；这组消息可以是历史对话，也可以是其他预先构造的消息。
+
+::: warning `MessagesPlaceholder` 不是 Memory
+
+它只负责插入**本次调用传进来的消息**，不会自己保存历史。跨请求记忆需要 Agent checkpointer；跨 thread 的长期资料使用 Store。
+
+:::
 
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import {
   ChatPromptTemplate,
   MessagesPlaceholder,
@@ -603,21 +742,19 @@ const model = new ChatOpenAI({
 // 创建模板并赋值
 const chatPrompt = ChatPromptTemplate.fromMessages([
   ["system", "你是一个边塞诗人, 可以写唐诗"],
-  new MessagesPlaceholder("history"), // 使用history占位
-  ["human", "请写一首唐诗"],
+  new MessagesPlaceholder({ variableName: "history", optional: true }),
+  ["human", "{question}"],
 ]);
 
-// 传入
-const history: any[] = [
-  // 可以是空数组或历史消息
-  { role: "human", content: "你来写一首唐诗" },
-  { role: "ai", content: "床前明月光, 疑是地上霜, 举头望明月, 低头思故乡" },
-  { role: "human", content: "好诗, 再来一个" },
-  { role: "ai", content: "锄禾日当午, 汗滴禾下土, 谁知盘中餐, 粒粒皆辛苦" },
+const history = [
+  new HumanMessage("请写一首唐诗。"),
+  new AIMessage("床前明月光，疑是地上霜。举头望明月，低头思故乡。"),
 ];
 
-// 调用（需要提供 history 变量）
-const response = await chatPrompt.invoke({ history });
+const response = await chatPrompt.invoke({
+  history,
+  question: "再写一首。",
+});
 
 // console.log(response.toChatMessages());
 // console.log("============================================================");
@@ -626,7 +763,7 @@ const response = await chatPrompt.invoke({ history });
 
 // 上面都是组装提示词 这里才是调用模型
 let res = await model.invoke(response);
-console.log(res.content);
+console.log(res.text);
 ```
 
 ---
@@ -635,7 +772,7 @@ console.log(res.content);
 
 ### 链的基础用法
 
-`将组件串联，上一个组件的输出作为下一个组件的输入`是LangChain 链 (尤其是 `|` 管道链) 的核心工作原理，这也是链式调用的核心价值: 实现数据的自动化流转与组件的协同工作.
+“将组件串联，让上一个组件的输出成为下一个组件的输入”是 LCEL 的核心。Python 常使用 `|` 运算符；TypeScript 使用 `.pipe()` 或 `RunnableSequence.from()`，不能直接照抄 Python 的 `|`。
 
 在 TypeScript 中，LCEL 主要组合实现 Runnable 接口的对象；普通函数可以通过 `RunnableLambda` 适配，对象映射可以通过 `RunnableSequence` 等组合。`callable`、`Mapping` 和“子类对象”是 Python 语境的说法，不应直接套到 TypeScript 类型系统。
 
@@ -645,6 +782,7 @@ import {
   ChatPromptTemplate,
   MessagesPlaceholder,
 } from "@langchain/core/prompts";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import "dotenv/config";
 
 // 使用 LangChain 的 ChatOpenAI
@@ -664,12 +802,12 @@ const chatPrompt = ChatPromptTemplate.fromMessages([
 ]);
 
 // 传入
-const history: any[] = [
+const history = [
   // 可以是空数组或历史消息
-  { role: "human", content: "你来写一首唐诗" },
-  { role: "ai", content: "床前明月光, 疑是地上霜, 举头望明月, 低头思故乡" },
-  { role: "human", content: "好诗, 再来一个" },
-  { role: "ai", content: "锄禾日当午, 汗滴禾下土, 谁知盘中餐, 粒粒皆辛苦" },
+  new HumanMessage("你来写一首唐诗"),
+  new AIMessage("床前明月光，疑是地上霜。举头望明月，低头思故乡。"),
+  new HumanMessage("好诗，再来一个"),
+  new AIMessage("锄禾日当午，汗滴禾下土。谁知盘中餐，粒粒皆辛苦。"),
 ];
 
 // Python: chat_prompt_template | model
@@ -682,7 +820,7 @@ const res = await chain.invoke({
   history,
 });
 
-console.log(res.content);
+console.log(res.text);
 console.log("==================");
 
 // Python: for chunk in chain.stream(...)
@@ -698,7 +836,7 @@ for await (const chunk of stream) {
 
 ### StringOutputParser
 
-`StringOutputParser` 的作用是：把模型返回的 `AIMessage` 转成普通 `string`。
+`StringOutputParser` 的作用是把模型消息或流式消息分片转换为普通字符串，使链后面的代码不再处理 `AIMessage` 对象。
 
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
@@ -707,6 +845,7 @@ import {
   ChatPromptTemplate,
   MessagesPlaceholder,
 } from "@langchain/core/prompts";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import "dotenv/config";
 
 // 使用 LangChain 的 ChatOpenAI
@@ -726,12 +865,12 @@ const chatPrompt = ChatPromptTemplate.fromMessages([
 ]);
 
 // 传入
-const history: any[] = [
+const history = [
   // 可以是空数组或历史消息
-  { role: "human", content: "你来写一首唐诗" },
-  { role: "ai", content: "床前明月光, 疑是地上霜, 举头望明月, 低头思故乡" },
-  { role: "human", content: "好诗, 再来一个" },
-  { role: "ai", content: "锄禾日当午, 汗滴禾下土, 谁知盘中餐, 粒粒皆辛苦" },
+  new HumanMessage("你来写一首唐诗"),
+  new AIMessage("床前明月光，疑是地上霜。举头望明月，低头思故乡。"),
+  new HumanMessage("好诗，再来一个"),
+  new AIMessage("锄禾日当午，汗滴禾下土。谁知盘中餐，粒粒皆辛苦。"),
 ];
 
 // Python: chat_prompt_template | model
@@ -757,7 +896,101 @@ for await (const chunk of stream) {
 }
 ```
 
-### JsonOutputParser与多模型链
+### 结构化输出与多模型链
+
+::: warning `JsonOutputParser` 还能用，但不是当前首选
+
+`JsonOutputParser` 只负责把合法 JSON 文本解析成 JavaScript 值；`JsonOutputParser<T>` 中的泛型只影响 TypeScript 静态类型，**不会在运行时验证**字段是否存在、类型是否正确。
+
+当前推荐：
+
+- 直接调用模型：`model.withStructuredOutput(zodSchema)`；
+- Agent：`createAgent({ responseFormat: zodSchema })`，从 `result.structuredResponse` 读取；
+- 只有模型不支持合适的结构化输出方式时，才退回“Prompt + JsonOutputParser + Zod.parse()”。
+
+第三方 OpenAI 兼容模型是否支持 `jsonSchema`、`functionCalling` 或工具策略，要按具体模型实测。
+
+- [Model structured output](https://docs.langchain.com/oss/javascript/langchain/models#structured-output)
+- [Agent structured output](https://docs.langchain.com/oss/javascript/langchain/structured-output)
+
+:::
+
+#### 当前推荐：`withStructuredOutput`
+
+```ts
+import * as z from "zod";
+import { ChatOpenAI } from "@langchain/openai";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+
+const NameResult = z.object({
+  name: z.string().trim().min(1).describe("生成的中文姓名"),
+});
+
+const model = new ChatOpenAI({
+  apiKey: process.env.DASHSCOPE_API_KEY,
+  model: "qwen-plus",
+  configuration: {
+    baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  },
+});
+
+const structuredModel = model.withStructuredOutput(NameResult, {
+  // OpenAI 兼容服务通常先尝试 functionCalling；仍需验证具体模型能力。
+  method: "functionCalling",
+});
+
+const makeName = ChatPromptTemplate.fromTemplate(
+  "姓氏：{lastname}；性别：{gender}。请生成一个中文姓名。",
+).pipe(structuredModel);
+
+const explainName = ChatPromptTemplate.fromTemplate(
+  "姓名{name}，请解释它的含义。",
+)
+  .pipe(model)
+  .pipe(new StringOutputParser());
+
+// 第一步需要完整且通过运行时校验的 name，第二步才能开始。
+const nameResult = await makeName.invoke({
+  lastname: "张",
+  gender: "女儿",
+});
+
+const answerStream = await explainName.stream({
+  name: nameResult.name,
+});
+
+for await (const chunk of answerStream) {
+  process.stdout.write(chunk);
+}
+```
+
+#### Agent 的结构化输出
+
+```ts
+import * as z from "zod";
+import { createAgent, toolStrategy } from "langchain";
+
+const Answer = z.object({
+  answer: z.string(),
+  confidence: z.number().min(0).max(1),
+});
+
+const agent = createAgent({
+  model,
+  tools: [],
+  // 第三方兼容服务的模型 profile 不可靠时，显式策略更可控。
+  responseFormat: toolStrategy(Answer),
+});
+
+const result = await agent.invoke({
+  messages: [{ role: "user", content: "请回答并给出置信度" }],
+});
+
+console.log(result.structuredResponse);
+```
+
+#### 兼容写法：`JsonOutputParser`
 
 在前面我们完成了这样的需求去构建多模型链，不过这种做法并不标准，因为: 上一个模型的输出，`没有被处理`就输入下一个模型。
 
@@ -800,7 +1033,9 @@ const chain = chatPromptFirst
   .pipe(model)
   .pipe(new StringOutputParser()); // 组装后的链
 
-// JsonOutputParser 只能解析模型实际返回的合法 JSON；生产代码仍应处理解析失败。
+// JsonOutputParser 只能解析合法 JSON；还要用 Zod 执行真正的运行时校验。
+// const parsedJson = await firstChain.invoke(input);
+// const nameResult = NameResult.parse(parsedJson);
 
 // console.log(chain);
 
@@ -819,6 +1054,12 @@ for await (const chunk of stream) {
 
 前文我们根据`JsonOutputParser`完成了多模型执行链条的构建。除了JsonOutputParser这类固定功能的解析器之外我们也可以自己编写`匿名函数`来完成自定义逻辑的数据转换，想怎么转换就怎么转换，更自由。想要完成这个功能，可以基于`RunnableLambda`类实现。
 
+::: warning 类型断言不是运行时校验
+
+下面的 `JSON.parse(...) as { name: string }` 只告诉 TypeScript“把它当成这个类型”，并不能阻止模型返回 `{}`、`{"name": 123}` 或其他结构。生产代码应使用 `NameResult.parse(JSON.parse(...))`，或者直接采用上面的 `withStructuredOutput(NameResult)`。
+
+:::
+
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
 import { StringOutputParser } from "@langchain/core/output_parsers";
@@ -826,6 +1067,7 @@ import { ChatPromptTemplate } from "@langchain/core/prompts";
 import "dotenv/config";
 import { RunnableLambda } from "@langchain/core/runnables";
 import { AIMessage } from "@langchain/core/messages";
+import * as z from "zod";
 
 // 使用 LangChain 的 ChatOpenAI
 const model = new ChatOpenAI({
@@ -836,9 +1078,13 @@ const model = new ChatOpenAI({
   },
 });
 
-// 自定义转换器：模型返回的是 JSON 字符串，需要先解析，再把 name 传给下一个 prompt。
+const NameResult = z.object({
+  name: z.string().trim().min(1),
+});
+
+// 自定义转换器：先解析 JSON，再用 Zod 做运行时校验。
 const chatCustomTemplate = RunnableLambda.from((aiMsg: AIMessage) => {
-  const parsed = JSON.parse(String(aiMsg.content)) as { name: string };
+  const parsed = NameResult.parse(JSON.parse(aiMsg.text));
   return { name: parsed.name };
 });
 
@@ -876,8 +1122,17 @@ for await (const chunk of stream) {
 
 RunnablePassthrough 是 LangChain LCEL 里的“原样传递器”。它的作用很简单：输入什么，就输出什么。大多数用于: 保留原输入，并往输入对象上追加新字段。
 
+::: tip LCEL 当前仍然有效
+
+LCEL 适合确定性的转换和 2-Step RAG。`RunnablePassthrough.assign(...)` 要求输入是对象；如果输入是字符串，先转换为对象，或使用下面 `RunnableSequence.from()` 的字段映射。涉及循环、分支、持久化或人工审批时，通常改用 Agent/LangGraph 更清晰。
+
+:::
+
 ```ts
 import { RunnablePassthrough } from "@langchain/core/runnables";
+
+// 下面先演示 RunnablePassthrough 本身；RAG 小段默认沿用你已经初始化好的
+// retriever 和 model，不是一个可独立复制运行的完整文件。
 // 最基础例子
 const passthrough = new RunnablePassthrough();
 
@@ -954,7 +1209,7 @@ const embeddings = new OpenAIEmbeddings({
   model: "text-embedding-3-large",
 });
 
-// 创建一个记忆
+// 创建进程内向量索引（用于 RAG，不是 Agent 对话记忆）
 const vectorStore = new MemoryVectorStore(embeddings);
 await vectorStore.addDocuments(docs);
 
@@ -1016,7 +1271,107 @@ const result2 = await objectInputChain.invoke({
 console.log(result2);
 ```
 
+::: warning 示例配置说明
+
+上面的 `OpenAIEmbeddings` 和 `ChatOpenAI` 未传 `baseURL`，因此默认读取 OpenAI 配置。若你使用 DashScope，必须像前文一样同时配置模型和 Embedding 的 `apiKey`、`baseURL` 与对应模型名称。
+
+:::
+
 ---
+
+## Agent Middleware
+
+Middleware 是当前 Agent 体系的主要扩展入口。日志、动态提示词、重试、模型降级、调用次数限制、长对话摘要、PII 处理和人工审批等横切能力，优先通过 Middleware 组合，而不是全部塞进工具函数。
+
+```ts
+import {
+  createAgent,
+  modelRetryMiddleware,
+  summarizationMiddleware,
+  toolCallLimitMiddleware,
+} from "langchain";
+
+const agent = createAgent({
+  model,
+  tools,
+  middleware: [
+    modelRetryMiddleware({
+      maxRetries: 2,
+      initialDelayMs: 1_000,
+      backoffFactor: 2,
+    }),
+    toolCallLimitMiddleware({
+      runLimit: 8,
+    }),
+    summarizationMiddleware({
+      model,
+      trigger: { tokens: 4_000 },
+      keep: { messages: 20 },
+    }),
+  ],
+});
+```
+
+::: warning Middleware 不是万能安全层
+
+- 401、参数错误和业务校验失败通常不应盲目重试；
+- 付款、发邮件、写数据库等有副作用的工具还要保证幂等，并根据风险加入人工审批；
+- 调用次数限制用于控制失控循环与成本，但不能替代工具权限和业务校验。
+
+:::
+
+- [Middleware overview](https://docs.langchain.com/oss/javascript/langchain/middleware/overview)
+- [Built-in middleware](https://docs.langchain.com/oss/javascript/langchain/middleware/built-in)
+
+## Agent 单元测试：`fakeModel`
+
+不要用真实模型承担所有测试。当前 LangChain 提供 `fakeModel()`，可以预设模型返回的文本、工具调用和错误，让 Agent 测试不消耗 API Key，并且结果稳定、可重复。
+
+```ts
+import { describe, expect, test } from "vitest";
+import { AIMessage } from "@langchain/core/messages";
+import { createAgent, fakeModel, tool } from "langchain";
+import * as z from "zod";
+
+const getWeather = tool(async ({ city }) => `${city}：晴朗`, {
+  name: "get_weather",
+  description: "查询城市天气",
+  schema: z.object({ city: z.string().min(1) }),
+});
+
+describe("weather agent", () => {
+  test("调用天气工具后生成最终回答", async () => {
+    const model = fakeModel()
+      .respondWithTools([
+        {
+          name: "get_weather",
+          args: { city: "广州" },
+          id: "call-1",
+        },
+      ])
+      .respond(new AIMessage("广州当前天气晴朗。"));
+
+    const agent = createAgent({
+      model,
+      tools: [getWeather],
+    });
+
+    const result = await agent.invoke({
+      messages: [{ role: "user", content: "广州天气如何？" }],
+    });
+
+    expect(result.messages.at(-1)?.text).toBe("广州当前天气晴朗。");
+    expect(model.callCount).toBe(2);
+    expect(
+      model.calls[1].messages.some((message) => message.type === "tool"),
+    ).toBe(true);
+  });
+});
+```
+
+这个测试验证的是 Agent 的确定性控制逻辑。真实服务是否支持工具调用、流式输出和错误格式，还需要少量集成测试单独验证。
+
+[LangChain Agent 单元测试](https://docs.langchain.com/oss/javascript/langchain/test/unit-testing)
 
 ## 短期记忆
 
@@ -1024,8 +1379,8 @@ console.log(result2);
 
 核心点：
 
-- 短期记忆的核心是 `checkpointer`
-- 同一个 `thread_id` 表示同一个会话
+- 短期记忆是当前 thread 范围内的 Agent/Graph state；`checkpointer` 负责让该 state 能在多次 `invoke()` 之间恢复
+- 同一个 `thread_id` 表示同一个会话线程，不等于用户 ID；一个用户可以有多个 thread
 - 开发环境常用 `MemorySaver`
 - 生产环境通常换成持久化 `checkpointer`
 
@@ -1053,7 +1408,7 @@ const agent = createAgent({
 
 const config = {
   configurable: {
-    thread_id: "user-1",
+    thread_id: "thread-1",
   },
 };
 
@@ -1071,15 +1426,17 @@ const result = await agent.invoke(
   config,
 );
 
-console.log(result.messages.at(-1)?.content);
+console.log(result.messages.at(-1)?.text);
 ```
 
-::: warning 旧写法说明
+::: danger 已弃用：`RunnableWithMessageHistory`
 
-`RunnableWithMessageHistory` 以前是给 LCEL 链“自动塞历史”的包装器。新项目如果是按当前 LangChain Agent 路线开发，优先用 `createAgent({ checkpointer })`。
+`RunnableWithMessageHistory` 在当前 `@langchain/core` API Reference 中已标记为 deprecated。它可能仍能运行，用于兼容已有 LCEL 代码；新 Agent 使用 `createAgent({ checkpointer })`。
 
 - `RunnableWithMessageHistory` 在原有链的基础上创建带有历史记录功能的新链(新`Runnable`实例)
 - `InMemoryChatMessageHistory` 为历史记录提供内存存储 (临时用)
+
+[RunnableWithMessageHistory API Reference](https://reference.langchain.com/javascript/langchain-core/runnables/RunnableWithMessageHistory)
 
 :::
 
@@ -1095,166 +1452,164 @@ console.log(result.messages.at(-1)?.content);
 
 ### 更底层：LangGraph + StateGraph
 
+::: danger 原示例的数据流问题（已修正）
+
+旧示例虽然保存了第二轮“请再给一个不同的名字”，节点却始终只使用固定的姓氏/性别模板，第二轮文本没有真正决定任务；节点还额外伪造了一条 human message，使历史重复、失真。下面改成：用户消息只从 `invoke()` 输入，节点只追加模型返回的 `AIMessage`。
+
+:::
+
 ```ts
 import { ChatOpenAI } from "@langchain/openai";
 import {
-  JsonOutputParser,
-  StringOutputParser,
-} from "@langchain/core/output_parsers";
-import {
-  ChatPromptTemplate,
-  MessagesPlaceholder,
-} from "@langchain/core/prompts";
-import {
+  END,
   MemorySaver,
   MessagesValue,
   START,
   StateSchema,
   StateGraph,
 } from "@langchain/langgraph";
-import { z } from "zod/v4";
 import "dotenv/config";
 
 const model = new ChatOpenAI({
   apiKey: process.env.DASHSCOPE_API_KEY,
-  model: "qwen3.6-plus",
+  model: "qwen-plus",
   configuration: {
     baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   },
 });
 
-const chatPromptFirst = ChatPromptTemplate.fromMessages([
-  ["system", "你是一个中文起名助手。可以参考历史对话，但必须严格返回JSON。"],
-  new MessagesPlaceholder("history"), // 负责把历史消息真正塞进 prompt。没有这一步，记忆虽然保存了，但模型看不到。
-  [
-    "human",
-    "我的邻居姓:{lastname},刚生了一个{gender}, 请起名, 并封装到JSON格式返回给我。要求key是name，value就是起的名字。只返回JSON。",
-  ],
-]);
-
-const chatPromptNext = ChatPromptTemplate.fromTemplate(
-  "姓名{name}，请帮我解析含义。不要返回md格式，请返回带有换行的文本。",
-);
-
-// 第一个chain
-// nameChain 本身是一个链
-// nameChain 的输出类型是 { name: string }，但 nameChain 本身不是 { name: string }
-const nameChain = chatPromptFirst
-  .pipe(model)
-  .pipe(new JsonOutputParser<{ name: string }>()); //  把前面模型生成的内容，交给 JsonOutputParser 解析成 JSON 对象。;
-
-// console.log("nameChain===>", nameChain);
-// 第二个chain
-const explainChain = chatPromptNext.pipe(model).pipe(new StringOutputParser());
-
-// 给 LangGraph 定义“图的状态结构” 声明每次 graph 运行时，state 里有哪些字段
-// State 让 LangGraph 知道 state 长什么样，并让 TypeScript 知道 state.lastname、state.gender 是字符串。
 const State = new StateSchema({
   messages: MessagesValue,
-  lastname: z.string(),
-  gender: z.string(),
 });
 
-//  LangGraph 里的一个节点函数：callModel。它的作用是：根据当前状态里的姓氏、性别和历史消息，先让模型起名，再让模型解释名字含义，最后把这轮对话写回 messages 状态中
+const callModel: typeof State.Node = async (state) => {
+  const response = await model.invoke([
+    {
+      role: "system",
+      content: "你是中文起名助手。要理解完整历史，并避免重复之前给过的名字。",
+    },
+    ...state.messages,
+  ]);
 
-/**
- * 1. 从图的状态里取出当前输入
-  2. 组装成 prompt 需要的参数
-  3. 调用模型，让它根据“姓 + 性别 + 历史上下文”生成结果
- */
-const callModel = async (state: typeof State.State) => {
-  // 这一步是调用 nameChain 起名字
-  const nameResult = await nameChain.invoke({
-    history: state.messages,
-    lastname: state.lastname,
-    gender: state.gender,
-  });
-  // console.log("nameChain===>", nameChain);
-
-  const answer = await explainChain.invoke({
-    name: nameResult.name,
-  });
-
-  // 把本次对话结果返回给 LangGraph
-  return {
-    messages: [
-      {
-        role: "human",
-        content: `姓:${state.lastname}，性别:${state.gender}，请起名并解析含义。`,
-      },
-      {
-        role: "ai",
-        content: answer,
-      },
-    ],
-  };
+  // MessagesValue 会把新 AIMessage 追加到已有历史。
+  return { messages: [response] };
 };
 
-//  负责保存状态
 const graph = new StateGraph(State)
   .addNode("call_model", callModel)
   .addEdge(START, "call_model")
+  .addEdge("call_model", END)
   .compile({
     checkpointer: new MemorySaver(),
   });
 
-//  thread_id: "user-1" 表示同一个会话。换成 "user-2" 就是另一个独立记忆。
 const config = {
   configurable: {
-    thread_id: "user-1",
+    // 这是会话线程 ID，不是用户 ID。
+    thread_id: "thread-1",
   },
 };
 
 const result = await graph.invoke(
   {
-    messages: [],
-    lastname: "张",
-    gender: "女儿",
+    messages: [
+      {
+        role: "user",
+        content: "我的邻居姓张，刚生了一个女儿，请起名并解释含义。",
+      },
+    ],
   },
   config,
 );
 
-console.log(result.messages.at(-1)?.content);
+console.log(result.messages.at(-1)?.text);
 
-// 再次使用同一个 thread_id，checkpointer 会加载这个线程此前保存的短期状态。
 const followUp = await graph.invoke(
   {
-    messages: [{ role: "human", content: "请再给一个不同的名字。" }],
-    lastname: "张",
-    gender: "女儿",
+    messages: [{ role: "user", content: "请再给一个不同的名字。" }],
   },
   config,
 );
 
-console.log(followUp.messages.at(-1)?.content);
+console.log(followUp.messages.at(-1)?.text);
 ```
 
 ## 长期记忆
 
-短期记忆用 `checkpointer`，长期记忆用 `LangGraph store`。学习用 `InMemoryStore`，生产用 `PostgresStore / MongoDBStore`。
+短期记忆使用 thread state + checkpointer；跨 thread 的长期记忆使用 LangGraph Store。两者和 RAG 的 `VectorStore` 不是同一个抽象。
+
+| 概念              | 生命周期                                     | 是否可变        | 典型内容                               |
+| ----------------- | -------------------------------------------- | --------------- | -------------------------------------- |
+| `state`           | 一次 run；有 checkpointer 时可按 thread 恢复 | 可变            | messages、中间结果、计数器             |
+| runtime `context` | 当前一次 `invoke()`                          | 只读            | userId、tenantId、数据库连接、运行配置 |
+| `checkpointer`    | 同一个 `thread_id` 的多次调用                | 保存 state 快照 | 短期记忆、暂停恢复、time travel        |
+| `store`           | 跨 thread                                    | 可读写          | 用户偏好、长期资料等 JSON 文档         |
+| RAG `VectorStore` | 取决于向量存储实现                           | 可检索/可能可写 | chunk、embedding、metadata             |
+
+::: warning `InMemoryStore` 不是物理持久化
+
+`InMemoryStore` 在语义上可作为跨 thread 的长期 Store，但数据只在当前进程内，程序重启就会丢失。生产环境使用数据库后端，例如官方示例中的 `PostgresStore`，并按对应包要求执行 `setup()`/迁移。
+
+:::
+
+```ts
+import { createAgent } from "langchain";
+import { InMemoryStore } from "@langchain/langgraph";
+
+const store = new InMemoryStore();
+
+const agent = createAgent({
+  model,
+  tools,
+  store,
+});
+```
+
+工具和 Middleware 可以通过 `runtime.store` 读写 Store。namespace 和 key 必须包含可信的租户/用户边界；不要直接相信模型生成的 `userId`。
+
+- [Long-term memory](https://docs.langchain.com/oss/javascript/langchain/long-term-memory)
+- [Runtime context](https://docs.langchain.com/oss/javascript/langchain/runtime)
 
 ---
 
 ## RAG基础
 
-:::warning 通用的基础大模型存在一些问题
+::: info 版本与包迁移说明
 
-1. LLM的知识不是实时的，模型训练好后不具备自动更新知识的能力，会导致部分信息滞后
-2. LLM领域知识是缺乏的，大模型的知识来源于训练数据，这些数据主要来自公开的互联网和开源数据集，无法覆盖特定领域或高度专业化的内部知识
-3. 幻觉问题，LLM有时会在回答中生成看似合理但实际上是错误的信息
-4. 数据安全性
-   :::
+本节按 2026-08-12 的 LangChain JavaScript 文档核对。核心 Agent API 位于 `langchain`，部分传统 Loader 和内存向量存储目前仍位于 `@langchain/classic`。少数集成页仍展示 `@langchain/community`；该 npm 包已经标记为 deprecated / being sunset，但仍可能收到社区维护更新，因此这里不把它误写成“完全停止维护”。新项目不应采用它，已有项目要锁定版本并进行实际加载/查询测试。
 
-RAG (Retrieval Augmented Generation) `检索增强生成`，利用**检索外部文档**提升生成结果质量, 为大模型提供了从特定数据源检索到的信息，以此来修正和补充生成的答案。可以总结为一个公式: RAG = 检索技术 + LLM 提示
+:::
+
+::: warning 通用基础模型的局限
+
+1. **知识具有时间边界**：模型不会因为现实世界发生变化而自动更新参数中的知识。
+2. **缺少私域知识**：模型通常不了解企业内部文档、个人笔记和特定业务数据。
+3. **可能产生幻觉**：即使提供了检索上下文，模型仍可能误解、遗漏或生成无依据内容。
+4. **上下文窗口有限**：不能把任意规模的知识库一次性塞进模型。
+5. **安全需要单独设计**：RAG 不会自动解决权限控制、租户隔离、敏感信息泄露和检索内容中的 Prompt Injection。
+
+:::
+
+RAG（Retrieval-Augmented Generation，检索增强生成）是在生成答案之前或生成过程中，从外部知识源检索相关内容，并把它们作为上下文交给模型。最小 2-Step RAG 可以助记为：
+
+```text
+RAG = 检索相关证据 + 构造上下文 + 基于证据生成
+```
 
 ![工作流程](/assert/image-langchain/工作流程.png)
 
 RAG的核心工作流程是:
 ![RAG的核心工作流程](/assert/image-langchain/RAG的核心工作流程.png)
 
-::: tip
-RAG 本质上是把“检索”和“生成”组合成一个流程：先检索相关上下文，再让LLM基于上下文生成答案，不只是提示词技巧。
-:::
+### 常见 RAG 架构
+
+| 架构        | 检索方式                                                            | 优点                       | 代价                   | 适用场景               |
+| ----------- | ------------------------------------------------------------------- | -------------------------- | ---------------------- | ---------------------- |
+| 2-Step RAG  | 每次固定先检索，再生成                                              | 可预测、易评测、延迟较稳定 | 灵活性较低             | FAQ、文档问答          |
+| Agentic RAG | Agent 决定是否检索、检索几次及使用哪个知识工具                      | 灵活，适合多工具           | 延迟、成本和轨迹不稳定 | 研究助手、多知识源助手 |
+| Hybrid RAG  | 融合固定检索与 Agentic 特征，可加入查询改写、重排、验证、迭代或回退 | 控制性与灵活性折中         | 实现和评测更复杂       | 高质量领域问答         |
+
+[官方 Retrieval 与 RAG 架构](https://docs.langchain.com/oss/javascript/langchain/retrieval)
 
 ### 嵌入模型（Embedding 模型）
 
@@ -1274,37 +1629,100 @@ RAG 本质上是把“检索”和“生成”组合成一个流程：先检索�
 | 任务     | 理解语义相似度 | 生成新内容   |
 | 典型场景 | 搜索引擎后台   | 聊天机器人   |
 
-在 RAG 里，判断两段文本“语义相似”通常使用余弦相似度算法：向量方向越接近，语义越相似。
+余弦相似度是 RAG 中常见的向量度量之一，但不是唯一选择。具体后端/index 也可能使用欧氏距离或点积；分数范围和方向由实现决定。
 
 ### 文档加载器（Document Loaders）
 
-`Document Loaders` 是 LangChain 里用来读取外部资料，并转换成 LangChain 标准 `Document` 对象的工具。
+Document Loader 负责从文件、网页或外部系统读取数据，并转换成统一的 LangChain `Document`。`pageContent` 用于后续切块和 Embedding；`metadata` 保存来源、页码、标题、权限范围等信息。
+
+::: danger 不要再使用 `loadAndSplit()`
+
+LangChain v1 已删除 `BaseDocumentLoader.loadAndSplit()`。当前写法明确分成两步：
+
+```ts
+const docs = await loader.load();
+const chunks = await splitter.splitDocuments(docs);
+```
+
+:::
+
+::: danger `@langchain/community` 已弃用并正在 sunset
+
+部分官方集成页仍展示 `@langchain/community`，但 npm 已将该包标记为 deprecated / being sunset；它仍可能收到社区维护更新，所以不能简单等同于“完全停止维护”。新项目不要新增该依赖，优先选择独立维护的 provider 包或当前教程采用的直接 parser。`@langchain/classic` 是 v0.x 兼容层，也不是新项目的通用首选；只有当前官方仍把某个具体 Loader/组件放在那里时，才按该集成页使用并建立测试。
+
+:::
+
+::: warning 本节 filesystem Loader 仅适用于 Node.js
+
+下面的 Text/PDF/CSV 文件示例用于服务端、Route Handler 或离线 ingestion 脚本，不能直接放进 React/Next.js Client Component。浏览器上传的文件应交给服务端处理，或使用明确支持浏览器的解析方案。
+
+:::
+
+#### 加载纯文本
 
 ```ts
 import { TextLoader } from "@langchain/classic/document_loaders/fs/text";
 
 const textLoader = new TextLoader("./data.txt");
 const textDocs = await textLoader.load();
-console.log(textDocs);
-
-// PDF
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
-
-const pdfLoader = new PDFLoader("./example.pdf");
-const pdfDocs = await pdfLoader.load();
 ```
 
-常见的文档加载器有：
+[TextLoader 官方文档](https://docs.langchain.com/oss/javascript/integrations/document_loaders/file_loaders/text)
 
-- TextLoader：从文本文件中加载
-- PDFLoader：从 PDF 文件中加载
-- JSONLoader：从 JSON 文件中加载
-- CSVLoader：从 CSV 文件中加载 [官方文档](https://docs.langchain.com/oss/javascript/integrations/document_loaders/file_loaders/csv/)
+#### 加载 PDF
+
+当前 LangChain Semantic Search 教程直接使用 `pdf-parse`，再构造 `Document`，从而避免已经弃用并进入 sunset 的 community PDFLoader：
+
+::: warning 这段代码只能在 Node.js 服务端或离线索引脚本运行
+
+`node:fs` 不能放进 React/Next.js Client Component。浏览器上传 PDF 时，应把文件交给 Route Handler/Server Action 处理，或在客户端使用专门的浏览器 PDF 解析方案。
+
+:::
 
 ```ts
-// CSVLoader
-// 安装  npm install @langchain/community d3-dsv@2
-import { CSVLoader } from "@langchain/community/document_loaders/fs/csv";
+import { readFileSync } from "node:fs";
+import { Document } from "@langchain/core/documents";
+import { PDFParse } from "pdf-parse";
+
+async function loadPdfPages(filePath: string): Promise<Document[]> {
+  const parser = new PDFParse({
+    data: new Uint8Array(readFileSync(filePath)),
+  });
+
+  try {
+    const { pages } = await parser.getText();
+
+    return pages.map(
+      (page) =>
+        new Document({
+          pageContent: page.text,
+          metadata: {
+            source: filePath,
+            // 项目中要统一使用 0-based 或 1-based 页码。
+            page: page.num - 1,
+          },
+        }),
+    );
+  } finally {
+    await parser.destroy();
+  }
+}
+
+const pdfDocs = await loadPdfPages("./example.pdf");
+```
+
+```bash
+pnpm add pdf-parse @langchain/core
+```
+
+[当前 Semantic Search 教程](https://docs.langchain.com/oss/javascript/langchain/knowledge-base)
+
+#### 加载 CSV
+
+官方页面正处于迁移期：CSV 单文件页还展示 community 路径，MultiFileLoader 示例则展示 classic 路径。文档之间并未完全统一。下面展示后者的 classic 写法，但必须以项目锁定版本的实际导出为准，并建立最小加载测试：
+
+```ts
+import { CSVLoader } from "@langchain/classic/document_loaders/fs/csv";
 
 const csvLoader = new CSVLoader("./data/users.csv");
 const csvDocs = await csvLoader.load();
@@ -1312,17 +1730,24 @@ const csvDocs = await csvLoader.load();
 console.log(csvDocs[0].pageContent);
 console.log(csvDocs[0].metadata);
 
-// name age city
-
-// 如果你的 CSV 不是逗号分隔，而是 ; 或 |，可以指定分隔符：
 const semicolonLoader = new CSVLoader("./data/users.csv", {
+  column: "content",
   separator: ";",
 });
 ```
 
+```bash
+pnpm add @langchain/classic @langchain/core d3-dsv@2
+```
+
+如果你锁定的旧版本没有 classic CSV 导出，只能使用 community 路径时，要锁定相互兼容的版本并建立加载测试。
+
+- [CSVLoader 页面](https://docs.langchain.com/oss/javascript/integrations/document_loaders/file_loaders/csv)
+- [MultiFileLoader 当前示例](https://docs.langchain.com/oss/javascript/integrations/document_loaders/file_loaders/multi_file)
+
 ### RecursiveCharacterTextSplitter
 
-`RecursiveCharacterTextSplitter` 是 LangChain 里最常用的文本切分器，主要用于 RAG: 把一大段文本切成多个较小的 chunk，方便后续做 embedding、存向量库、检索。它的核心思想是：尽量按自然边界切分文本。默认会按类似这样的优先级递归切: `["\n\n", "\n", " ", ""]`
+`RecursiveCharacterTextSplitter` 是通用文本的推荐起点。它会依次尝试分隔符，直到 chunk 满足大小限制。默认分隔符是 `["\n\n", "\n", " ", ""]`。
 
 1. 先尽量按段落切: `\n\n`
 2. 段落太大，再按换行切: `\n`
@@ -1346,31 +1771,53 @@ const docs = [
   }),
 ];
 
-const markdownSplitter = new RecursiveCharacterTextSplitter({
+const splitter = new RecursiveCharacterTextSplitter({
   chunkSize: 500, // 表示每个 chunk 的最大长度。默认按字符长度计算，不是 token。
-  chunkOverlap: 50, // 表示相邻 chunk 之间重叠多少字符。重叠的作用是保留上下文，避免重要信息刚好被切断。
+  chunkOverlap: 50, // 目标重叠长度；不保证每一块都精确重叠相同字符数。
 });
 
-// splitDocuments 会保留原来的 metadata，这对 RAG 很重要。比如后续检索到某个 chunk 时，你还能知道它来自哪个文件、哪一页、哪一行。
+// 会复制原文档已有的 metadata，但不会凭空生成页码、行号或标题。
 const splitDocs = await splitter.splitDocuments(docs);
 
 console.log(splitDocs[0].pageContent);
 console.log(splitDocs[0].metadata);
 
-// 自定义切分符
-const splitter = new RecursiveCharacterTextSplitter({
+// 中文资料通常没有空格作为词边界，加入中文标点。
+const chineseSplitter = new RecursiveCharacterTextSplitter({
   chunkSize: 500,
   chunkOverlap: 50,
-  // 这表示优先按 Markdown 二级标题切，再按段落、换行、空格切。
-  separators: ["\n## ", "\n\n", "\n", " ", ""],
+  separators: [
+    "\n\n",
+    "\n",
+    " ",
+    "。",
+    "．",
+    ".",
+    "！",
+    "？",
+    "；",
+    "，",
+    ",",
+    "、",
+    "\u200b",
+    "",
+  ],
 });
 ```
+
+如果把 `"\n## "` 放入 `separators`，它只是在匹配字符串，并不理解 Markdown AST，也不会自动把标题层级写入 metadata。需要保留标题结构时，应先解析 Markdown 或显式补充标题 metadata。
+
+::: tip 不存在通用最佳切块参数
+
+`chunkSize: 500` 和 `chunkOverlap: 50` 只是起点。应使用固定问题集比较参数对检索命中率、答案正确率、延迟和成本的影响。
+
+:::
 
 ### 向量存储（Vector Store）
 
 [官方 LangChain JS Vector Store](https://docs.langchain.com/oss/javascript/integrations/vectorstores)
 
-安装: `npm install @langchain/classic`
+安装：`pnpm add @langchain/classic @langchain/core @langchain/openai`
 
 Vector Store 通常译为“向量存储”，负责保存向量及其关联数据并提供相似度检索接口。它是抽象能力，不等同于独立运行、可持久化的“向量数据库”；例如 `MemoryVectorStore` 只是进程内实现。
 
@@ -1423,12 +1870,23 @@ const results = await vectorStore.similaritySearch("什么是 RAG？", 2);
 console.log(results);
 ```
 
-::: warning 注意
+::: warning 删除能力必须按具体实现与版本确认
 
-- JavaScript 的 `MemoryVectorStore` 不支持 `delete`
-- Python 的 `InMemoryVectorStore` 支持 `delete(ids=[...])`
+`VectorStore` 抽象包含 `delete()`，但每个后端支持的参数不同，可能按 `ids`、metadata filter 或清空索引删除。当前总览甚至用 `MemoryVectorStore` 演示 filter 删除，而具体 Memory Reference 又存在文档缺口。因此不要在笔记里断言所有版本的 `MemoryVectorStore` 都“不支持 delete”；在锁定版本上用 TypeScript 类型和冒烟测试确认。
 
-如果在 JavaScript 里需要按 id 删除文档，应该改用 `Chroma`、`Qdrant`、`Pinecone` 这类支持持久化和删除能力的向量存储。
+需要稳定的按 ID 删除和持久化时，应选择明确记录这些能力的实现，例如独立维护的 Qdrant、Pinecone 等 provider 包，并查看该集成自己的文档。Python 的 `InMemoryVectorStore` 当前明确支持 `delete(ids=[...])`。
+
+:::
+
+Python 对照示例需要先安装依赖，并提供 `DASHSCOPE_API_KEY`：
+
+```bash
+pip install -U langchain-core langchain-community dashscope
+```
+
+::: warning Python 的 `langchain_community` 与 JavaScript 包不是同一套发布状态
+
+下面的 `DashScopeEmbeddings` 当前 Python Reference 仍可用，但它属于 Python community 集成。要单独锁定并测试 Python 依赖，不要把前面对 JavaScript `@langchain/community` 的判断机械套用过来，也不要因为类名相似就混用两种语言的导入路径。
 
 :::
 
@@ -1468,21 +1926,43 @@ print(results)
 
 ### 使用Chroma持久化向量
 
-`Chroma` 是一个真正的向量数据库，常用于 RAG。它和 `MemoryVectorStore` 最大区别是：`MemoryVectorStore` 只存在`内存`里，程序停了就没；`Chroma` 是一个独立的向量数据库服务，可以持久化保存数据。
+Chroma 是向量数据库，但“使用 Chroma”不等于当前 JavaScript 进程会自动把数据永久保存。需要区分：
 
-[LangChain JS Chroma 文档](https://docs.langchain.com/oss/javascript/integrations/vectorstores/chroma)
+- **Chroma Server**：保存集合、向量、文本和 metadata；
+- **JavaScript/TypeScript 客户端**：通过 HTTP 连接 Server；
+- **LangChain Chroma 包装器**：把 Chroma 适配成 LangChain `VectorStore`。
 
-- 安装: `npm install @langchain/community chromadb` `npm install @langchain/openai @langchain/core `
-- 启动 Chroma 服务: `npx chroma run` 默认会启动在: `http://localhost:8000`
-- 基本用法:
+TypeScript 本地持久化运行：
 
-::: tip 说明
+```bash
+pnpm add chromadb
+npx chroma run --path ./chroma-data
+```
 
-截至 2026-06-02，LangChain 官方 JavaScript Chroma 文档仍使用 `@langchain/community/vectorstores/chroma` 作为导入路径。
+`--path` 决定服务端数据目录；默认端口是 `8000`。也可以使用 Docker 或 Chroma Cloud。
 
-也就是说，下面这段示例和当前官方文档是一致的。
+- [Chroma TypeScript Client/Server](https://docs.trychroma.com/docs/run-chroma/clients)
+- [Chroma CLI run](https://docs.trychroma.com/docs/cli/run)
+
+::: danger LangChain JavaScript Chroma 包装器位于已弃用包
+
+截至 2026-08-12，LangChain JavaScript Vector Store 索引仍展示 `@langchain/community/vectorstores/chroma`，但 npm 已将 `@langchain/community` 标记为 deprecated / being sunset；不同官方页面对维护状态的措辞并不完全一致。因此它属于迁移期/兼容入口，而不是新生产项目的稳定依赖方向。
+
+已有项目可以锁定兼容的 `@langchain/community` 与 `chromadb` 版本继续使用；新项目优先选择有独立维护包的 Vector Store，或直接使用 `chromadb` 客户端，并为连接、添加、查询、过滤和删除建立冒烟测试。
+
+如果要运行下面的**旧项目兼容示例**，仅安装 `chromadb` 不够；还需要按已有项目锁文件安装兼容的包装器和 LangChain 包，例如：
+
+```bash
+pnpm add @langchain/community @langchain/core @langchain/openai chromadb
+```
+
+不要仅凭这条命令随意升级旧项目；应保留 lockfile，并实际测试连接、写入、过滤和删除。
+
+[LangChain JavaScript Vector Store 索引](https://docs.langchain.com/oss/javascript/integrations/vectorstores/index)
 
 :::
+
+下面代码保留，是为了说明迁移期包装器的现有 API，而不是推荐新项目采用该依赖：
 
 ```ts
 import "dotenv/config";
@@ -1490,16 +1970,25 @@ import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { Document } from "@langchain/core/documents";
 
+function requireEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`缺少环境变量：${name}`);
+  }
+  return value;
+}
+
 const embeddings = new OpenAIEmbeddings({
-  apiKey: process.env.DASHSCOPE_API_KEY,
+  apiKey: requireEnv("DASHSCOPE_API_KEY"),
   model: "text-embedding-v4",
   configuration: {
-    baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    baseURL: requireEnv("DASHSCOPE_BASE_URL"),
   },
 });
 
 const vectorStore = new Chroma(embeddings, {
-  collectionName: "my_docs", // 数据库里的“表名” 不同 collection 存不同的知识库
+  collectionName: "my_docs",
+  url: process.env.CHROMA_URL ?? "http://localhost:8000",
 });
 
 // 添加文档
@@ -1536,16 +2025,18 @@ const resultsWithScore = await vectorStore.similaritySearchWithScore(
 );
 
 for (const [doc, score] of resultsWithScore) {
-  console.log(score);
-  console.log(doc.pageContent);
-  console.log(doc.metadata);
+  console.log({ score, content: doc.pageContent, metadata: doc.metadata });
 }
 
 // 按 metadata 过滤
-const filteredResults = await vectorStore.similaritySearch("什么是 LangChain？", 2, {
-  // 表示只在 metadata.type === "framework" 的文档里搜索
-  type: "framework",
-});
+const filteredResults = await vectorStore.similaritySearch(
+  "什么是 LangChain？",
+  2,
+  {
+    // 表示只在 metadata.type === "framework" 的文档里搜索
+    type: "framework",
+  },
+);
 
 // 转成 Retriever
 // RAG 里更常见的是把 Chroma 转成 retriever
@@ -1563,3 +2054,114 @@ await vectorStore.delete({
   ids: ["doc-1"],
 });
 ```
+
+::: warning 不要统一解释 score
+
+不同 Vector Store 的 score 可能是相似度，也可能是距离；数值范围以及“越大越相关/越小越相关”的方向并不统一。必须查看当前集成说明，并用已知相似与不相似文本验证一次。
+
+:::
+
+### RAG 评测：检索和生成分开检查
+
+只看最终回答“读起来是否合理”无法判断问题发生在哪一层。至少分别检查：
+
+| 维度                        | 比较对象             | 问题                           |
+| --------------------------- | -------------------- | ------------------------------ |
+| Retrieval relevance         | 检索文档 vs 用户问题 | 检索结果是否相关？             |
+| Groundedness / Faithfulness | 回答 vs 检索文档     | 回答中的结论是否都有文档依据？ |
+| Answer relevance            | 回答 vs 用户问题     | 是否真正解决问题？             |
+| Answer correctness          | 回答 vs 参考答案     | 是否与已知正确答案一致？       |
+
+建立至少 10～20 条固定测试数据，包含直接命中、同义改写、多 chunk、无答案拒答、metadata 权限过滤和文档 Prompt Injection。入库时给每个 chunk 保存稳定的 `chunkId`；只检查文件级 `source` 会把“命中了同一文件里的错误 chunk”误判为成功。
+
+```ts
+import type { Document } from "@langchain/core/documents";
+
+type AnswerableCase = {
+  question: string;
+  expectedChunkIds: string[];
+  expectedSources?: string[]; // 只作为更粗粒度的诊断信息
+  referenceAnswer: string;
+  shouldAnswer: true;
+};
+
+type UnanswerableCase = {
+  question: string;
+  expectedChunkIds: [];
+  shouldAnswer: false;
+};
+
+type RagEvalCase = AnswerableCase | UnanswerableCase;
+
+const evalCases: RagEvalCase[] = [
+  {
+    question: "Chroma 在系统中负责什么？",
+    expectedChunkIds: ["note-2#chunk-0"],
+    expectedSources: ["note-2"],
+    referenceAnswer: "负责保存向量并执行相似度检索。",
+    shouldAnswer: true,
+  },
+  {
+    question: "资料中没有记载的问题",
+    expectedChunkIds: [],
+    shouldAnswer: false,
+  },
+];
+
+function getChunkIds(documents: Document[]): string[] {
+  return documents.map((document) => String(document.metadata.chunkId ?? ""));
+}
+
+function hitAtK(documents: Document[], expectedChunkIds: string[]): number {
+  if (expectedChunkIds.length === 0) {
+    throw new Error("无答案问题不使用 Hit@K，应单独评测拒答行为");
+  }
+
+  const expected = new Set(expectedChunkIds);
+  return getChunkIds(documents).some((id) => expected.has(id)) ? 1 : 0;
+}
+
+function recallAtK(documents: Document[], expectedChunkIds: string[]): number {
+  if (expectedChunkIds.length === 0) {
+    throw new Error("Recall@K 需要至少一个期望 chunk");
+  }
+
+  const retrieved = new Set(getChunkIds(documents));
+  const hits = new Set(expectedChunkIds.filter((id) => retrieved.has(id)));
+  return hits.size / new Set(expectedChunkIds).size;
+}
+
+function reciprocalRank(
+  documents: Document[],
+  expectedChunkIds: string[],
+): number {
+  const expected = new Set(expectedChunkIds);
+  const rank = getChunkIds(documents).findIndex((id) => expected.has(id));
+  return rank === -1 ? 0 : 1 / (rank + 1);
+}
+```
+
+- `Hit@K`：Top-K 中是否至少出现一个正确 chunk；
+- `Recall@K`：期望证据 chunk 有多少比例被取回；
+- `MRR`：第一个正确 chunk 排得越靠前越好，取各问题 reciprocal rank 的平均值；
+- `shouldAnswer: false`：不要求 Retriever 返回空数组，而是单独检查最终回答是否明确说明证据不足，并统计拒答正确率和无依据断言；
+- Groundedness：把回答中的结论与本次取回的证据逐项比较，不能由 Retrieval 指标代替。
+
+::: tip 推荐 RAG 返回结构
+
+RAG 函数不要只返回答案字符串，至少保留原始检索文档，方便展示引用、权限检查、日志和评测：
+
+```ts
+import type { Document } from "@langchain/core/documents";
+
+type RagOutput = {
+  answer: string;
+  documents: Document[];
+};
+```
+
+每轮实验只改变一个变量，例如 chunk 参数、Embedding、Top-K、MMR、filter、reranker 或 Prompt，并记录命中率、正确率、Groundedness、延迟和成本。
+
+:::
+
+[LangSmith RAG 评测教程](https://docs.langchain.com/langsmith/evaluate-rag-tutorial)
