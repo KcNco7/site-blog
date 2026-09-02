@@ -17,11 +17,11 @@
 
 ### React 19 新增 Hook
 
-| Hook             | 用途                                         | 使用频率   |
-| ---------------- | -------------------------------------------- | ---------- |
-| `useActionState` | 管理 Action 的状态和待处理状态               | ⭐⭐⭐⭐⭐ |
-| `useFormStatus`  | 从 `react-dom` 获取父表单的提交状态          | ⭐⭐⭐⭐   |
-| `useOptimistic`  | 乐观更新（立即更新 UI，后台同步）            | ⭐⭐⭐⭐   |
+| Hook             | 用途                                | 使用频率   |
+| ---------------- | ----------------------------------- | ---------- |
+| `useActionState` | 管理 Action 的状态和待处理状态      | ⭐⭐⭐⭐⭐ |
+| `useFormStatus`  | 从 `react-dom` 获取父表单的提交状态 | ⭐⭐⭐⭐   |
+| `useOptimistic`  | 乐观更新（立即更新 UI，后台同步）   | ⭐⭐⭐⭐   |
 
 ---
 
@@ -95,7 +95,9 @@ export function Example() {
       <button onClick={() => handleClick("aaaa")}>点击</button>
       <pre>{JSON.stringify({ id, cls }, null, 2)}</pre>
       <div dangerouslySetInnerHTML={{ __html: trustedHtml }} />
-      {items.map((item) => <div key={item.id}>{item.label}</div>)}
+      {items.map((item) => (
+        <div key={item.id}>{item.label}</div>
+      ))}
     </section>
   );
 }
@@ -229,10 +231,7 @@ type Action =
   | { type: "update_name"; id: number; newName: string };
 
 // 处理函数
-const reducer = (
-  state: Data,
-  action: Action,
-): Data => {
+const reducer = (state: Data, action: Action): Data => {
   switch (action.type) {
     case "add":
       return state.map((item) =>
@@ -373,7 +372,9 @@ function ThemeButton() {
     });
   };
 
-  return <button onClick={updateTheme}>{user.profile.preferences.theme}</button>;
+  return (
+    <button onClick={updateTheme}>{user.profile.preferences.theme}</button>
+  );
 }
 
 type State = { count: number; isLoading: boolean; history: number[] };
@@ -467,7 +468,7 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 
 const localChangeEvent = "local-storage-change";
 
-export const useStorage = <T,>(key: string, initialValue: T) => {
+export const useStorage = <T>(key: string, initialValue: T) => {
   const cache = useRef<{ raw: string | null; value: T }>({
     raw: null,
     value: initialValue,
@@ -475,30 +476,36 @@ export const useStorage = <T,>(key: string, initialValue: T) => {
 
   // 订阅者
   // 2. React 调用 subscribe(内部callback)，建立监听
-  const subscribe = useCallback((callback: () => void) => {
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === key) callback();
-    };
-    const handleLocalChange = (event: Event) => {
-      const { detail } = event as CustomEvent<{ key: string }>;
-      if (detail.key === key) callback();
-    };
+  const subscribe = useCallback(
+    (callback: () => void) => {
+      const handleStorage = (event: StorageEvent) => {
+        if (event.key === key) callback();
+      };
+      const handleLocalChange = (event: Event) => {
+        const { detail } = event as CustomEvent<{ key: string }>;
+        if (detail.key === key) callback();
+      };
 
-    // storage 事件负责其他文档的更新；自定义事件负责当前文档的更新
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener(localChangeEvent, handleLocalChange);
-    return () => {
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener(localChangeEvent, handleLocalChange);
-    };
-  }, [key]);
+      // storage 事件负责其他文档的更新；自定义事件负责当前文档的更新
+      window.addEventListener("storage", handleStorage);
+      window.addEventListener(localChangeEvent, handleLocalChange);
+      return () => {
+        window.removeEventListener("storage", handleStorage);
+        window.removeEventListener(localChangeEvent, handleLocalChange);
+      };
+    },
+    [key],
+  );
 
   // 快照
   // 1. React 调用 getSnapshot()，先拿当前值
   const getSnapshot = useCallback(() => {
     const raw = localStorage.getItem(key);
     if (raw === null) {
-      if (cache.current.raw !== null || !Object.is(cache.current.value, initialValue)) {
+      if (
+        cache.current.raw !== null ||
+        !Object.is(cache.current.value, initialValue)
+      ) {
         cache.current = { raw: null, value: initialValue };
       }
       return cache.current.value;
@@ -515,7 +522,11 @@ export const useStorage = <T,>(key: string, initialValue: T) => {
     return value;
   }, [initialValue, key]);
 
-  const value = useSyncExternalStore(subscribe, getSnapshot, () => initialValue);
+  const value = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    () => initialValue,
+  );
 
   const update = (nextValue: T) => {
     localStorage.setItem(key, JSON.stringify(nextValue));
@@ -812,7 +823,9 @@ function App() {
   return (
     <main>
       <h1>Advice App</h1>
-      <p>{error ? error.message : isLoading ? "Loading..." : data?.slip?.advice}</p>
+      <p>
+        {error ? error.message : isLoading ? "Loading..." : data?.slip?.advice}
+      </p>
       <button disabled={isLoading} onClick={() => getAdvice()}>
         Get Advice
       </button>
@@ -871,11 +884,11 @@ useLayoutEffect(() => {
 
 :::info useLayoutEffect和useEffect区别
 
-| 区别         | useLayoutEffect                        | useEffect                              |
-| ------------ | -------------------------------------- | -------------------------------------- |
-| **执行时机** | DOM 已提交、浏览器绘制前执行            | 通常在浏览器绘制后执行；交互触发的 Effect 也可能在绘制前运行 |
-| **调度特征** | setup 与其中的更新会阻塞浏览器绘制      | 不应依赖“必定异步”或“必定绘制后”的时序 |
-| **适用范围** | 绘制前测量布局或同步调整视觉结果         | 默认选择，用于大多数外部系统同步       |
+| 区别         | useLayoutEffect                    | useEffect                                                    |
+| ------------ | ---------------------------------- | ------------------------------------------------------------ |
+| **执行时机** | DOM 已提交、浏览器绘制前执行       | 通常在浏览器绘制后执行；交互触发的 Effect 也可能在绘制前运行 |
+| **调度特征** | setup 与其中的更新会阻塞浏览器绘制 | 不应依赖“必定异步”或“必定绘制后”的时序                       |
+| **适用范围** | 绘制前测量布局或同步调整视觉结果   | 默认选择，用于大多数外部系统同步                             |
 
 :::
 
@@ -920,11 +933,15 @@ function TextInput() {
    createHandle: 返回值，返回一个对象，对象的属性就是子组件暴露给父组件的方法或属性
    deps?:[可选] 依赖项，当依赖项发生变化时，会重新调用createHandle函数，类似于useEffect的依赖项
  */
-useImperativeHandle(ref, () => {
-  return {
-    // 暴露给父组件的方法或属性
-  };
-}, dependencies);
+useImperativeHandle(
+  ref,
+  () => {
+    return {
+      // 暴露给父组件的方法或属性
+    };
+  },
+  dependencies,
+);
 ```
 
 #### 执行时机
@@ -1032,7 +1049,7 @@ const memoizedCallback = useCallback(() => {
 
 - `useMemo(() => value, deps)` 缓存计算结果。
 - `useCallback(fn, deps)` 缓存函数引用，等价于 `useMemo(() => fn, deps)`。
-:::
+  :::
 
 ### useDebugValue
 
@@ -1221,7 +1238,7 @@ import { Activity } from "react";
 
 <Activity mode={visibility}>
   <Sidebar />
-</Activity>
+</Activity>;
 ```
 
 ```tsx
@@ -1584,7 +1601,7 @@ console.log(a);
 React Router v7 提供三种逐级增强的使用模式：
 
 - 声明模式：使用 `<BrowserRouter>`、`<Routes>` 等 API 完成基础匹配和导航。
-- 数据模式：在声明模式之上增加 loader、action、pending state、fetcher 等数据能力。
+- `数据`模式：在声明模式之上增加 loader、action、pending state、fetcher 等数据能力。(主要使用的模式)
 - 框架模式：在数据模式之上结合 Vite 插件和路由模块，提供类型安全、智能分包以及 SPA、SSR、静态渲染等能力。
 
 三种模式没有统一的“最佳”选择，应根据应用是否需要数据 API、服务端渲染以及对构建架构的控制程度决定。
@@ -1595,7 +1612,9 @@ React Router v7 提供三种逐级增强的使用模式：
 pnpm add react-router
 ```
 
-v7 的主要 API 已合并到 `react-router`；`react-router-dom` 在 v7 仍作为兼容性重导出包发布，迁移项目可以逐步改用 `react-router`。
+v7 的主要 API 已合并到 `react-router`； 在 v7 版本中 `react-router-dom` 仍作为兼容性重导出包发布.
+
+#### 基本使用
 
 ```ts
 // /router/index.ts
@@ -1617,9 +1636,23 @@ const router = createBrowserRouter([
 export default router;
 ```
 
+这种写法叫做平行路由.
+
+因为`<RouterProvider router={router} />`这个是写在`render`中因此他可以直接代替`<App />`直接写为:
+
+```tsx
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>,
+);
+```
+
+也可以保留App.tsx进行初始化.
+
 > 如何初始化? (类似于去Vue3配置`use`)
 
-在 App.tsx 中挂载 `RouterProvider`。它不仅提供路由上下文，也会渲染当前匹配到的路由树；嵌套路由的子级位置再由父路由中的 `<Outlet />` 指定。
+在 App.tsx 中挂载 `RouterProvider`。它不仅提供路由上下文，也会渲染当前匹配到的路由树；**嵌套路由**的子级位置再由父路由中的 `<Outlet />` 指定。
 
 ```tsx
 // App.tsx
@@ -1638,35 +1671,15 @@ const App: React.FC = () => {
 export default App;
 ```
 
-使用`NavLink`进行跳转:
+::: tip 总结
 
-```tsx
-// Home.tsx
-import { NavLink } from "react-router";
-const Home: React.FC = () => {
-  return (
-    <div>
-      <NavLink to="/about">About</NavLink>
-    </div>
-  );
-};
+1. `outlet`: 嵌套路由中, 子路由在父路由中应该渲染的位置
+2. 跳转路由:
+   - `<Link to="/">Home</Link>` 或 `<NavLink to="/">Home</NavLink>` (组件)
+   - 使用 `useNavigate` hook (函数式)
+3. 获取路由信息: `useLocation` hook
 
-export default Home;
-```
-
-```tsx
-// About.tsx
-import { NavLink } from "react-router";
-const About: React.FC = () => {
-  return (
-    <div>
-      <NavLink to="/">Home</NavLink>
-    </div>
-  );
-};
-
-export default About;
-```
+:::
 
 ### 路由模式
 
@@ -1722,7 +1735,158 @@ export default About;
 1. 在使用`createBrowserRouter`创建路由
 2. Nginx中修改`/conf/nginx.conf` , 在`location`中添加如下代码`try_files $uri $uri/ /index.html;`
 
-### 路由
+### 导航
+
+#### Link
+
+`Link` 用于客户端路由导航，最终渲染为 `<a>` 元素。对于由当前路由器处理的地址，它会拦截普通点击并通过路由器更新页面；使用 `reloadDocument`、指向外部地址或浏览器无法接管的点击时，仍会进行文档级导航。
+
+示例:
+
+```tsx
+import { Link } from "react-router";
+
+export default function App() {
+  return <Link to="/index/user">user</Link>;
+}
+```
+
+参数:
+
+- `to`：要导航到的路径
+- `replace`：为 `true` 时替换当前 history 条目；默认会新增 history 条目
+- `state`：要传递给目标页面的状态(携带参数) <span v-pre>`<Link to="/index/user" state={{id:1}}>`</span>
+- `relative`：控制相对地址（尤其是 `..`）的解析方式。默认 `route` 按路由层级回退，`path` 按 URL 路径段回退；以 `/` 开头的地址仍是绝对路径
+- `reloadDocument`：跳转页面时是否重新加载页面
+- `preventScrollReset`：跳转后是否阻止滚动位置重置
+- `viewTransition`：是否启用视图过渡
+
+#### NavLink
+
+`NavLink` 继承 `Link` 的导航能力，并增加 `end`、`caseSensitive` 以及基于 active/pending/transitioning 状态生成 `className`、`style` 或 children 的能力。
+
+::: tip link和navlink的区别
+
+Navlink 会经过以下三个状态的转换，而Link不会，所以Navlink就是一个link的增强版。
+
+- `active`：激活状态(当前路由和to属性匹配)
+- `pending`：等待状态(loader有数据需要加载)
+- `transitioning`：过渡状态(通过viewTransition属性触发)
+  :::
+
+Navlink 会根据当前路由和to属性是否匹配，自动激活。react-router会为其自动添加样式:
+
+```css
+a.active {
+  color: red;
+}
+
+a.pending {
+  animation: pulse 1s infinite;
+}
+
+a.transitioning {
+  /* css transition is running */
+}
+```
+
+也可以直接用style属性来设置:
+
+```tsx
+<NavLink
+  viewTransition
+  style={({ isActive, isPending, isTransitioning }) => {
+    return {
+      marginRight: "10px",
+      color: isActive ? "red" : "blue",
+      backgroundColor: isPending ? "yellow" : "transparent",
+    };
+  }}
+  to="/index/about"
+>
+  About
+</NavLink>
+```
+
+::: warning 注意
+
+1. `viewTransition` 依赖浏览器 View Transition API，应按目标浏览器范围检查兼容性，并为不支持的环境保留无动画的正常导航体验
+2. `pending`只有数据模式，和框架模式才能使用，声明式路由不能使用
+   :::
+
+#### useNavigate 编程式导航
+
+`useNavigate` 是一个 `React-router` 的钩子，用于编程式导航的路由跳转。
+
+> eg: 例如倒计时结束后，自动返回跳转等, 因为这种操作属于逻辑性操作，这时候组件方式的跳转就不合适了，这时候就需要使用编程式跳转。
+
+```tsx
+import { useEffect } from "react";
+import { useNavigate } from "react-router";
+
+function AutoBackHome() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      navigate("/home", { replace: true });
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [navigate]);
+
+  return <p>即将返回首页…</p>;
+}
+```
+
+参数:
+
+1. 第一个参数: `to` 跳转的路由 navigate(to)
+
+```tsx
+import { useNavigate } from "react-router";
+
+function HomeButton() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate("/home")}>首页</button>;
+}
+```
+
+2. 第二个参数: `options` 配置对象 navigate(to, options)
+   - `replace`: 跳转页面的时候，是否替换当前路由
+   - `state`: 传递数据，在跳转的页面中使用通过`useLocation`的state属性获取 `navigate('/home',{state:{name:'张三'}});`
+   - `relative`: 当 `to` 是相对地址时，控制按路由层级（默认 `route`）还是 URL 路径段（`path`）解析；写成 `/home` 的绝对地址不受此选项影响
+   - `preventScrollReset`: 跳转页面的时候，是否阻止滚动重置
+   - `viewTransition`: 跳转页面的时候，是否使用过渡动画 `navigate('/home',{viewTransition:true});`
+
+#### redirect
+
+`redirect` 是用于重定向，通常用于`loader`中，当`loader`返回`redirect`的时候，会自动重定向到`redirect`指定的路由。
+
+```tsx
+import { redirect } from "react-router";
+
+const homeRoute = {
+  path: "/home",
+  loader: async () => {
+    const isLogin = await checkLogin();
+    if (!isLogin) return redirect("/login");
+    return { data: "home" };
+  },
+};
+```
+
+### 路由类型
+
+#### 嵌套路由
+
+嵌套路由就是父路由中嵌套子路由 `children` ，子路由可以继承父路由的布局，也可以有自己的布局。
+
+**注意事项**:
+
+- 如果父路由的 `path` 是 `/index`，相对子路由 `home` 会匹配 `/index/home`。这与 `index: true` 的索引路由是两个不同概念。
+- 子路由不需要增加`/`了直接写子路由的`path`即可
+- 子路由默认是不显示的，需要父路由通过 `Outlet` 组件来显示子路由 `Outlet` 就是类似于Vue的`<router-view>`展示子路由的一个容器
+- 子路由的层级可以无限嵌套，但是要注意的是，一般实际工作中就是2-3层
 
 #### Layout布局
 
@@ -1762,27 +1926,6 @@ export default function Menu() {
 ```
 
 > 如何将`Menu` `Header` `Content` 进行串联
-
-#### 嵌套路由
-
-嵌套路由就是父路由中嵌套子路由 `children` ，子路由可以继承父路由的布局，也可以有自己的布局。
-
-**注意事项**:
-
-- 如果父路由的 `path` 是 `/index`，相对子路由 `home` 会匹配 `/index/home`。这与 `index: true` 的索引路由是两个不同概念。
-- 子路由不需要增加`/`了直接写子路由的`path`即可
-- 子路由默认是不显示的，需要父路由通过 `Outlet` 组件来显示子路由 `Outlet` 就是类似于Vue的`<router-view>`展示子路由的一个容器
-- 子路由的层级可以无限嵌套，但是要注意的是，一般实际工作中就是2-3层
-
-::: tip 总结
-
-1. `outlet`: 嵌套路由中, 子路由在父路由中应该渲染的位置
-2. 跳转路由:
-   - `<Link to="/">Home</Link>` 或 `<NavLink to="/">Home</NavLink>`
-   - 使用 `useNavigate` hook
-3. 获取路由信息: `useLocation` hook
-
-:::
 
 #### 布局路由
 
@@ -1993,7 +2136,9 @@ function UserLinks() {
   const state = { name: "xxx", age: 18 };
   return (
     <>
-      <Link to="/user" state={state}>User</Link>
+      <Link to="/user" state={state}>
+        User
+      </Link>
       <button onClick={() => navigate("/user", { state })}>User</button>
     </>
   );
@@ -2033,362 +2178,6 @@ React Router 提供了三种参数传递方式，各有特点：
    - 限制：复制 URL、新开标签页或服务端直接访问时无法获得该状态，不应把关键数据只放在 state 中
 
 选择建议：必要参数用 Params(查详情)，筛选条件用 Query(搜索 分页)，临时数据用 State(复杂数据)。
-
-### 路由懒加载
-
-> 什么是懒加载?
-
-懒加载是一种优化技术，用于延迟加载组件，直到需要时才加载。这样可以减少初始加载时间，提高页面性能。
-
-```ts
-// 通过在路由对象中使用 lazy 属性来实现懒加载。
-import { createBrowserRouter } from "react-router";
-import Layout from "../pages/Layout";
-
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const router = createBrowserRouter([
-  {
-    Component: Layout,
-    children: [
-      {
-        path: "about",
-        lazy: async () => {
-          await sleep(2000);
-          const module = await import("../pages/About");
-          return { Component: module.default };
-        },
-      },
-    ],
-  },
-]);
-```
-
-当切换到 `about` 路由时，才会进行加载
-
-::: tip
-路由模块的动态导入通常在首次访问后由模块加载器缓存。`loader` 是否重新执行由导航、提交后的重新验证、`shouldRevalidate` 等因素决定；`useNavigation().state` 会在等待 lazy 路由、loader 或 action 时反映相应的 pending 状态。
-:::
-
-#### 体验优化
-
-例如 `about` 是一个懒加载的组件，在切换到 `about` 路由时，展示的还是上一个路由的组件，直到懒加载的组件加载完成，才会展示新的组件，这样用户会感觉页面`卡顿`，用户体验不好。 使用[`useNavigation`](https://message163.github.io/react-docs/react/router/hooks/useNavigation.html)进行状态优化
-
-```tsx
-// src/layout/Content/index.tsx
-// 实现loading效果
-import { Outlet, useNavigation } from "react-router";
-import { Alert, Spin } from "antd";
-export default function Content() {
-  const navigation = useNavigation();
-  console.log(navigation.state);
-  const isLoading = navigation.state === "loading";
-  return (
-    <div>
-      {isLoading ? (
-        <Spin size="large" tip="loading...">
-          <Alert description="xxxxxxxxxxxxxxxx" message="加载中" type="info" />
-        </Spin>
-      ) : (
-        <Outlet />
-      )}
-    </div>
-  );
-}
-```
-
-### 路由数据 API
-
-数据模式的重要能力包括：
-
-- `loader`
-- `action`
-
-在平时工作中大部分都是在做`增刪查改(CRUD)`的操作，所以一个界面的接口过多之后就会使逻辑臃肿复杂，难以维护，所以需要使用路由的高级操作来`优化代码`。
-
-#### loader
-
-::: tip
-loader 负责读取路由数据，会在匹配导航、GET 表单提交、显式重新验证等场景运行。它不是“收到任意 GET 请求就触发”，而是由 React Router 的数据路由流程调用。
-:::
-
-[useLoaderData](https://message163.github.io/react-docs/react/router/hooks/useLoaderData.html)
-
-在没有loader之前是 `RenderComponent`(渲染组件) --> `Fetch`(获取数据)-> `RenderView`(渲染视图)
-
-有了loader之后是 `loader`(通过fetch获取数据) -> `useLoaderData`(获取数据) -> `RenderComponent`(渲染组件)
-
-示例:
-
-```tsx
-//router/index.tsx
-import { createBrowserRouter } from "react-router";
-const router = createBrowserRouter([
-  {
-    path: "/",
-    Component: App,
-    loader: async () => {
-      const response = await fetch("/api/users");
-      if (!response.ok) throw new Response("获取用户失败", { status: response.status });
-      const data = await response.json();
-      return { users: data.list, message: "success" };
-    },
-  },
-]);
-```
-
-使用useLoaderData接收数据:
-
-```tsx
-//App.tsx
-import { useLoaderData } from "react-router"; // 使用useLoaderData接收数据
-
-type LoaderData = { users: Array<{ id: number; name: string }>; message: string };
-
-const App = () => {
-  const { users } = useLoaderData() as LoaderData;
-  return <ul>{users.map((user) => <li key={user.id}>{user.name}</li>)}</ul>;
-};
-```
-
-#### action
-
-一般用于表单提交，删除，修改等操作。
-
-[useSubmit](https://message163.github.io/react-docs/react/router/hooks/useSubmit.html)
-
-[useActionData](https://message163.github.io/react-docs/react/router/hooks/useActionData.html)
-
-::: tip
-action 处理发送到路由的非 GET 数据提交，例如 POST、PUT、PATCH、DELETE；GET 表单提交会序列化到 URL 并运行 loader，而不是 action。
-:::
-
-示例:
-
-```tsx
-//App.tsx
-import { useSubmit } from "react-router"; // 用这个hook 使onFinish提交给action
-import { Card, Form, Input, Button } from "antd";
-export default function About() {
-  // onFinish --> action --> api
-  const submit = useSubmit();
-  return (
-    <Card>
-      <Form
-        onFinish={(values) => {
-          /**
-            values 需要提交的值
-            配置项(对象) 提交方式 编码格式 默认是formData 
-           */
-          submit(values, { method: "post" }); // 提交表单
-        }}
-      >
-        <Form.Item name="name" label="姓名">
-          <Input />
-        </Form.Item>
-        <Form.Item name="age" label="年龄">
-          <Input />
-        </Form.Item>
-        <Button type="primary" htmlType="submit">
-          提交
-        </Button>
-      </Form>
-    </Card>
-  );
-}
-
-// 接收参数
-//router/index.tsx
-import { createBrowserRouter } from "react-router";
-const router = createBrowserRouter([
-  {
-    // path: '/index',
-    Component: Layout,
-    children: [
-      {
-        path: "about",
-        Component: About,
-        // 定义action 通过request
-        action: async ({ request }) => {
-          const formData = await request.formData();
-          const createdUser = await createUser(formData);
-          return { data: createdUser, success: true };
-        },
-      },
-    ],
-  },
-]);
-```
-
-#### 状态变更
-
-可以配合[`useNavigation`](https://message163.github.io/react-docs/react/router/hooks/useNavigation.html)来管理表单提交的状态
-
-GET提交状态: `idle` --> `loading` --> `idle`
-
-POST提交状态: `idle` --> `submitting` --> `loading` --> `idle`
-
-可以根据这些状态来控制`disabled` `loading` 等行为
-
-```tsx
-import { useNavigation, useSubmit } from "react-router";
-
-function SubmitButton() {
-  const submit = useSubmit();
-  const navigation = useNavigation();
-  const isBusy = navigation.state !== "idle";
-
-  return (
-    <button
-      disabled={isBusy}
-      onClick={() => submit({ name: "Alice" }, { method: "post" })}
-    >
-      {navigation.state === "submitting" ? "提交中..." : "提交"}
-    </button>
-  );
-}
-```
-
-### 导航
-
-#### Link
-
-`Link` 用于客户端路由导航，最终渲染为 `<a>` 元素。对于由当前路由器处理的地址，它会拦截普通点击并通过路由器更新页面；使用 `reloadDocument`、指向外部地址或浏览器无法接管的点击时，仍会进行文档级导航。
-
-示例:
-
-```tsx
-import { Link } from "react-router";
-
-export default function App() {
-  return <Link to="/index/user">user</Link>;
-}
-```
-
-参数:
-
-- `to`：要导航到的路径
-- `replace`：为 `true` 时替换当前 history 条目；默认会新增 history 条目
-- `state`：要传递给目标页面的状态(携带参数) <span v-pre>`<Link to="/index/user" state={{id:1}}>`</span>
-- `relative`：控制相对地址（尤其是 `..`）的解析方式。默认 `route` 按路由层级回退，`path` 按 URL 路径段回退；以 `/` 开头的地址仍是绝对路径
-- `reloadDocument`：跳转页面时是否重新加载页面
-- `preventScrollReset`：跳转后是否阻止滚动位置重置
-- `viewTransition`：是否启用视图过渡
-
-#### NavLink
-
-`NavLink` 继承 `Link` 的导航能力，并增加 `end`、`caseSensitive` 以及基于 active/pending/transitioning 状态生成 `className`、`style` 或 children 的能力。
-
-::: tip link和navlink的区别
-
-Navlink 会经过以下三个状态的转换，而Link不会，所以Navlink就是一个link的增强版。
-
-- `active`：激活状态(当前路由和to属性匹配)
-- `pending`：等待状态(loader有数据需要加载)
-- `transitioning`：过渡状态(通过viewTransition属性触发)
-  :::
-
-Navlink 会根据当前路由和to属性是否匹配，自动激活。react-router会为其自动添加样式:
-
-```css
-a.active {
-  color: red;
-}
-
-a.pending {
-  animation: pulse 1s infinite;
-}
-
-a.transitioning {
-  /* css transition is running */
-}
-```
-
-也可以直接用style属性来设置:
-
-```tsx
-<NavLink
-  viewTransition
-  style={({ isActive, isPending, isTransitioning }) => {
-    return {
-      marginRight: "10px",
-      color: isActive ? "red" : "blue",
-      backgroundColor: isPending ? "yellow" : "transparent",
-    };
-  }}
-  to="/index/about"
->
-  About
-</NavLink>
-```
-
-::: warning 注意
-
-1. `viewTransition` 依赖浏览器 View Transition API，应按目标浏览器范围检查兼容性，并为不支持的环境保留无动画的正常导航体验
-2. `pending`只有数据模式，和框架模式才能使用，声明式路由不能使用
-   :::
-
-#### useNavigate 编程式导航
-
-`useNavigate` 是一个 `React-router` 的钩子，用于编程式导航的路由跳转。
-
-> eg: 例如倒计时结束后，自动返回跳转等, 因为这种操作属于逻辑性操作，这时候组件方式的跳转就不合适了，这时候就需要使用编程式跳转。
-
-```tsx
-import { useEffect } from "react";
-import { useNavigate } from "react-router";
-
-function AutoBackHome() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      navigate("/home", { replace: true });
-    }, 1000);
-    return () => window.clearTimeout(timer);
-  }, [navigate]);
-
-  return <p>即将返回首页…</p>;
-}
-```
-
-参数:
-
-1. 第一个参数: `to` 跳转的路由 navigate(to)
-
-```tsx
-import { useNavigate } from "react-router";
-
-function HomeButton() {
-  const navigate = useNavigate();
-  return <button onClick={() => navigate("/home")}>首页</button>;
-}
-```
-
-2. 第二个参数: `options` 配置对象 navigate(to, options)
-   - `replace`: 跳转页面的时候，是否替换当前路由
-   - `state`: 传递数据，在跳转的页面中使用通过`useLocation`的state属性获取 `navigate('/home',{state:{name:'张三'}});`
-   - `relative`: 当 `to` 是相对地址时，控制按路由层级（默认 `route`）还是 URL 路径段（`path`）解析；写成 `/home` 的绝对地址不受此选项影响
-   - `preventScrollReset`: 跳转页面的时候，是否阻止滚动重置
-   - `viewTransition`: 跳转页面的时候，是否使用过渡动画 `navigate('/home',{viewTransition:true});`
-
-#### redirect
-
-`redirect` 是用于重定向，通常用于`loader`中，当`loader`返回`redirect`的时候，会自动重定向到`redirect`指定的路由。
-
-```tsx
-import { redirect } from "react-router";
-
-const homeRoute = {
-  path: "/home",
-  loader: async () => {
-    const isLogin = await checkLogin();
-    if (!isLogin) return redirect("/login");
-    return { data: "home" };
-  },
-};
-```
 
 ### 边界处理
 
@@ -2504,10 +2293,240 @@ import { isRouteErrorResponse, useRouteError } from "react-router";
 export default function Error() {
   const error = useRouteError();
   if (isRouteErrorResponse(error)) {
-    return <div>{error.status}：{String(error.data ?? error.statusText)}</div>;
+    return (
+      <div>
+        {error.status}：{String(error.data ?? error.statusText)}
+      </div>
+    );
   }
   if (error instanceof Error) return <div>{error.message}</div>;
   return <div>未知错误</div>;
+}
+```
+
+### 路由懒加载
+
+> 什么是懒加载?
+
+懒加载是一种优化技术，用于延迟加载组件，直到需要时才加载。这样可以减少初始加载时间，提高页面性能。
+
+```ts
+// 通过在路由对象中使用 lazy 属性来实现懒加载。
+import { createBrowserRouter } from "react-router";
+import Layout from "../pages/Layout";
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const router = createBrowserRouter([
+  {
+    Component: Layout,
+    children: [
+      {
+        path: "about",
+        lazy: async () => {
+          await sleep(2000);
+          const module = await import("../pages/About");
+          return { Component: module.default };
+        },
+      },
+    ],
+  },
+]);
+```
+
+当切换到 `about` 路由时，才会进行加载
+
+::: tip
+路由模块的动态导入通常在首次访问后由模块加载器缓存。`loader` 是否重新执行由导航、提交后的重新验证、`shouldRevalidate` 等因素决定；`useNavigation().state` 会在等待 lazy 路由、loader 或 action 时反映相应的 pending 状态。
+:::
+
+#### 体验优化
+
+例如 `about` 是一个懒加载的组件，在切换到 `about` 路由时，展示的还是上一个路由的组件，直到懒加载的组件加载完成，才会展示新的组件，这样用户会感觉页面`卡顿`，用户体验不好。 使用[`useNavigation`](https://message163.github.io/react-docs/react/router/hooks/useNavigation.html)进行状态优化
+
+```tsx
+// src/layout/Content/index.tsx
+// 实现loading效果
+import { Outlet, useNavigation } from "react-router";
+import { Alert, Spin } from "antd";
+export default function Content() {
+  const navigation = useNavigation();
+  console.log(navigation.state);
+  const isLoading = navigation.state === "loading";
+  return (
+    <div>
+      {isLoading ? (
+        <Spin size="large" tip="loading...">
+          <Alert description="xxxxxxxxxxxxxxxx" message="加载中" type="info" />
+        </Spin>
+      ) : (
+        <Outlet />
+      )}
+    </div>
+  );
+}
+```
+
+### 路由数据 API
+
+数据模式的重要能力包括：
+
+- `loader`
+- `action`
+
+在平时工作中大部分都是在做`增刪查改(CRUD)`的操作，所以一个界面的接口过多之后就会使逻辑臃肿复杂，难以维护，所以需要使用路由的高级操作来`优化代码`。
+
+#### loader
+
+::: tip
+loader 负责读取路由数据，会在匹配导航、GET 表单提交、显式重新验证等场景运行。它不是“收到任意 GET 请求就触发”，而是由 React Router 的数据路由流程调用。
+:::
+
+[useLoaderData](https://message163.github.io/react-docs/react/router/hooks/useLoaderData.html)
+
+在没有loader之前是 `RenderComponent`(渲染组件) --> `Fetch`(获取数据)-> `RenderView`(渲染视图)
+
+有了loader之后是 `loader`(通过fetch获取数据) -> `useLoaderData`(获取数据) -> `RenderComponent`(渲染组件)
+
+示例:
+
+```tsx
+//router/index.tsx
+import { createBrowserRouter } from "react-router";
+const router = createBrowserRouter([
+  {
+    path: "/",
+    Component: App,
+    loader: async () => {
+      const response = await fetch("/api/users");
+      if (!response.ok)
+        throw new Response("获取用户失败", { status: response.status });
+      const data = await response.json();
+      return { users: data.list, message: "success" };
+    },
+  },
+]);
+```
+
+使用useLoaderData接收数据:
+
+```tsx
+//App.tsx
+import { useLoaderData } from "react-router"; // 使用useLoaderData接收数据
+
+type LoaderData = {
+  users: Array<{ id: number; name: string }>;
+  message: string;
+};
+
+const App = () => {
+  const { users } = useLoaderData() as LoaderData;
+  return (
+    <ul>
+      {users.map((user) => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  );
+};
+```
+
+#### action
+
+一般用于表单提交，删除，修改等操作。
+
+[useSubmit](https://message163.github.io/react-docs/react/router/hooks/useSubmit.html)
+
+[useActionData](https://message163.github.io/react-docs/react/router/hooks/useActionData.html)
+
+::: tip
+action 处理发送到路由的非 GET 数据提交，例如 POST、PUT、PATCH、DELETE；GET 表单提交会序列化到 URL 并运行 loader，而不是 action。
+:::
+
+示例:
+
+```tsx
+//App.tsx
+import { useSubmit } from "react-router"; // 用这个hook 使onFinish提交给action
+import { Card, Form, Input, Button } from "antd";
+export default function About() {
+  // onFinish --> action --> api
+  const submit = useSubmit();
+  return (
+    <Card>
+      <Form
+        onFinish={(values) => {
+          /**
+            values 需要提交的值
+            配置项(对象) 提交方式 编码格式 默认是formData 
+           */
+          submit(values, { method: "post" }); // 提交表单
+        }}
+      >
+        <Form.Item name="name" label="姓名">
+          <Input />
+        </Form.Item>
+        <Form.Item name="age" label="年龄">
+          <Input />
+        </Form.Item>
+        <Button type="primary" htmlType="submit">
+          提交
+        </Button>
+      </Form>
+    </Card>
+  );
+}
+
+// 接收参数
+//router/index.tsx
+import { createBrowserRouter } from "react-router";
+const router = createBrowserRouter([
+  {
+    // path: '/index',
+    Component: Layout,
+    children: [
+      {
+        path: "about",
+        Component: About,
+        // 定义action 通过request
+        action: async ({ request }) => {
+          const formData = await request.formData();
+          const createdUser = await createUser(formData);
+          return { data: createdUser, success: true };
+        },
+      },
+    ],
+  },
+]);
+```
+
+#### 状态变更
+
+可以配合[`useNavigation`](https://message163.github.io/react-docs/react/router/hooks/useNavigation.html)来管理表单提交的状态
+
+GET提交状态: `idle` --> `loading` --> `idle`
+
+POST提交状态: `idle` --> `submitting` --> `loading` --> `idle`
+
+可以根据这些状态来控制`disabled` `loading` 等行为
+
+```tsx
+import { useNavigation, useSubmit } from "react-router";
+
+function SubmitButton() {
+  const submit = useSubmit();
+  const navigation = useNavigation();
+  const isBusy = navigation.state !== "idle";
+
+  return (
+    <button
+      disabled={isBusy}
+      onClick={() => submit({ name: "Alice" }, { method: "post" })}
+    >
+      {navigation.state === "submitting" ? "提交中..." : "提交"}
+    </button>
+  );
 }
 ```
 
@@ -2929,26 +2948,24 @@ interface UserStore {
 
 const useUserStore = create<UserStore>()(
   devtools(
-    immer(
-      (set) => ({
-        name: "坤坤",
-        age: 18,
-        hobby: {
-          sing: "坤式唱腔",
-          dance: "坤式舞步",
-          rap: "坤式rap",
-          basketball: "坤式篮球",
-        },
-        setHobbyRap: (rap: string) =>
-          set((state) => {
-            state.hobby.rap = rap;
-          }),
-        setHobbyBasketball: (basketball: string) =>
-          set((state) => {
-            state.hobby.basketball = basketball;
-          }),
-      }),
-    ),
+    immer((set) => ({
+      name: "坤坤",
+      age: 18,
+      hobby: {
+        sing: "坤式唱腔",
+        dance: "坤式舞步",
+        rap: "坤式rap",
+        basketball: "坤式篮球",
+      },
+      setHobbyRap: (rap: string) =>
+        set((state) => {
+          state.hobby.rap = rap;
+        }),
+      setHobbyBasketball: (basketball: string) =>
+        set((state) => {
+          state.hobby.basketball = basketball;
+        }),
+    })),
     {
       enabled: true,
       name: "用户信息",
@@ -2976,26 +2993,24 @@ interface UserStore {
 
 const useUserStore = create<UserStore>()(
   persist(
-    immer(
-      (set) => ({
-        name: "坤坤",
-        age: 18,
-        hobby: {
-          sing: "坤式唱腔",
-          dance: "坤式舞步",
-          rap: "坤式rap",
-          basketball: "坤式篮球",
-        },
-        setHobbyRap: (rap: string) =>
-          set((state) => {
-            state.hobby.rap = rap;
-          }),
-        setHobbyBasketball: (basketball: string) =>
-          set((state) => {
-            state.hobby.basketball = basketball;
-          }),
-      }),
-    ),
+    immer((set) => ({
+      name: "坤坤",
+      age: 18,
+      hobby: {
+        sing: "坤式唱腔",
+        dance: "坤式舞步",
+        rap: "坤式rap",
+        basketball: "坤式篮球",
+      },
+      setHobbyRap: (rap: string) =>
+        set((state) => {
+          state.hobby.rap = rap;
+        }),
+      setHobbyBasketball: (basketball: string) =>
+        set((state) => {
+          state.hobby.basketball = basketball;
+        }),
+    })),
     {
       name: "user",
       // 可省略：默认就是 JSON + localStorage。sessionStorage 可直接替换；
