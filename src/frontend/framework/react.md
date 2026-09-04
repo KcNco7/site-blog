@@ -23,18 +23,6 @@
 | `useFormStatus`  | 从 `react-dom` 获取父表单的提交状态 | ⭐⭐⭐⭐   |
 | `useOptimistic`  | 乐观更新（立即更新 UI，后台同步）   | ⭐⭐⭐⭐   |
 
----
-
-### 最常用的 5 个
-
-```
-1. useState → 状态管理
-2. useEffect → 副作用
-3. useCallback → 优化性能
-4. useMemo → 优化性能
-5. useRef → DOM 引用 / 持久化值
-```
-
 ## React组件重新渲染时机
 
 React 组件重新渲染的主要时机包括：
@@ -133,11 +121,11 @@ SWC 核心是编译器，不应直接等同于完整模块打包器。它能移�
 
 ### 原理
 
-## Hooks
-
 Hook 只能在 React 函数组件或自定义 Hook 的顶层调用，不能放在循环、条件分支或普通函数中。
 
-### useState 状态
+## \*useState 状态
+
+### 基本类型
 
 对于基本类型的使用:
 
@@ -158,6 +146,8 @@ function App() {
 export default App;
 ```
 
+### 数组
+
 对于复杂类型的使用:
 
 - 添加元素 --> concat, [...arr]
@@ -176,15 +166,58 @@ setItems((current) => current.map((item) => (item === 2 ? 666 : item)));
 setItems((current) => [...current].sort((a, b) => a - b));
 ```
 
-`useState` 的 setter 会为后续渲染排队更新；它不会立即改变当前事件处理函数已经读取到的 state 快照。`useReducer` 也遵循相同的渲染与批处理机制，适合把复杂的状态转换集中到 reducer 中，但不能用来获得“同步更新”。
+下面是常见数组操作的参考表。当你操作 React state 中的数组时，你需要避免使用左列的方法，而首选右列的方法：
+
+| 操作类型     | 避免使用（会改变原始数组）      | 推荐使用（会返回一个新数组）    | 示例                                                                                          |
+| ------------ | ------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------- |
+| **添加元素** | `push`<br>`unshift`             | `concat`<br>`[...arr]` 展开语法 | `const newArr = arr.concat(newItem)`<br>`const newArr = [...arr, newItem]`                    |
+| **删除元素** | `pop`<br>`shift`<br>`splice`    | `filter`<br>`slice`             | `const newArr = arr.filter(item => item !== removeItem)`<br>`const newArr = arr.slice(0, -1)` |
+| **替换元素** | `splice`<br>`arr[i] = ...` 赋值 | `map`                           | `const newArr = arr.map(item => item.id === targetId ? newItem : item)`                       |
+| **排序**     | `reverse`<br>`sort`             | 先将数组复制一份                | `const newArr = [...arr].sort()`<br>`const newArr = [...arr].reverse()`                       |
+
+`useState` 的 `setter` 会为后续渲染排队更新；它不会立即改变当前事件处理函数已经读取到的 `state` 快照。`useReducer` 也遵循相同的渲染与批处理机制，适合把复杂的状态转换集中到 reducer 中，但不能用来获得“同步更新”。
+
+### 对象
+
+`useState` 可以接受一个函数，可以在函数里面编写逻辑，初始化值，注意这个只会执行一次，更新时不会再次执行。
+
+```ts
+import { useState } from "react"
+function App() {
+  let [obj, setObject] = useState(() => {
+    const date = new Date().getFullYear() + '-' + (new Date().getMonth() + 1) + '-' + new Date().getDate()
+    return {
+      date,
+      name: 'John',
+      age: 11
+    }
+  })
+  const heandleClick = () => {
+    setObject({
+      ...obj,
+      name: 'Ale'
+    })
+    //setObject(Object.assign({}, obj, { age: 26 })) 第二种写法
+  }
+  return (
+    <>
+      <button onClick={heandleClick}>更改值</button>
+      <div>日期：{obj.date}</div>
+      <div>姓名：{obj.name}</div>
+      <div>年龄：{obj.age}</div>
+    </>
+  )
+}
+export default App
+```
 
 ::: warning 注意
 
-调用 setter 后，当前函数中的状态变量仍然是本次渲染的快照；新值会在后续渲染中读取到。
+调用 `setter` 后，当前函数中的状态变量仍然是本次渲染的快照；新值会在后续渲染中读取到。(异步操作 为了性能优化)
 
 This is because states behaves like a snapshot. Updating state requests another render with the new state value, but does not affect the count JavaScript variable in your already-running event handler.
 
-如果当前逻辑还需要使用计算后的值，可以先把它保存到变量中，再传给 setter：
+如果当前逻辑还需要使用计算后的值，可以先把它保存到变量中，再传给 `setter`：
 
 ```ts
 const nextCount = count + 1;
@@ -203,7 +236,7 @@ setAge((currentAge) => currentAge + 1); // 依赖上一状态时更稳妥
 
 :::
 
-### useReducer：集中管理复杂状态更新
+## useReducer：集中管理复杂状态更新
 
 `const [state, dispatch] = useReducer(reducer, initialArg, init?)`
 
@@ -218,131 +251,50 @@ setAge((currentAge) => currentAge + 1); // 依赖上一状态时更稳妥
 ```tsx
 import { useReducer } from "react";
 
-const initData = [
-  { name: "小满(只)", price: 100, count: 1, id: 1, isEdit: false },
-  { name: "中满(只)", price: 200, count: 1, id: 2, isEdit: false },
-  { name: "大满(只)", price: 300, count: 1, id: 3, isEdit: false },
-];
+// 默认值
+const initialState = {
+  count: -1,
+};
 
-type Data = typeof initData;
+type State = typeof initialState;
 
-type Action =
-  | { type: "add" | "sub" | "del" | "edit" | "blur"; id: number }
-  | { type: "update_name"; id: number; newName: string };
+// 初始化函数 只在初始化时执行一次 修饰默认值
+const initFn = (state: State) => {
+  console.log("init", state);
 
-// 处理函数
-const reducer = (state: Data, action: Action): Data => {
+  // 取反
+  return { count: Math.abs(state.count) };
+};
+
+// 处理函数 默认不执行 只有在dispatch时才会执行
+// 第二个是action对象 里面有type属性 用于区分不同的操作
+const reducer = (state: State, action: { type: "add" | "sub" }) => {
+  console.log("reducer", state);
+
   switch (action.type) {
     case "add":
-      return state.map((item) =>
-        item.id === action.id ? { ...item, count: item.count + 1 } : item,
-      );
+      return { count: state.count + 1 };
     case "sub":
-      return state.map((item) =>
-        item.id === action.id
-          ? { ...item, count: Math.max(0, item.count - 1) }
-          : item,
-      );
-    case "del":
-      return state.filter((item) => item.id !== action.id);
-    case "edit":
-      return state.map((item) =>
-        item.id === action.id ? { ...item, isEdit: !item.isEdit } : item,
-      );
-    case "update_name":
-      return state.map((item) =>
-        item.id === action.id ? { ...item, name: action.newName } : item,
-      );
-    case "blur":
-      return state.map((item) =>
-        item.id === action.id ? { ...item, isEdit: false } : item,
-      );
+      return { count: state.count - 1 };
+    default:
+      return state;
   }
 };
 
 function App() {
-  const [data, dispatch] = useReducer(reducer, initData);
+  // 第一个参数是reducer处理函数
+  // 第二个参数是默认值
+  // 第三个参数可选 初始化函数 用于修饰默认值
+  // 传了第三个参数后，默认值会被传入初始化函数中，返回值会作为最终的默认值 如果没传就是直接使用默认值
+  const [state, dispatch] = useReducer(reducer, initialState, initFn);
+
   return (
     <>
-      <h1>购物车</h1>
-      <table width={800} border={1} cellPadding={0} cellSpacing={0}>
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>单价</th>
-            <th>数量</th>
-            <th>总价</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((item) => {
-            return (
-              <tr key={item.id}>
-                <td align="center">
-                  {item.isEdit ? (
-                    <input
-                      onBlur={() => {
-                        dispatch({
-                          type: "blur",
-                          id: item.id,
-                        });
-                      }}
-                      onChange={(e) => {
-                        dispatch({
-                          type: "update_name",
-                          id: item.id,
-                          newName: e.target.value,
-                        });
-                      }}
-                      type="text"
-                      value={item.name}
-                    />
-                  ) : (
-                    item.name
-                  )}
-                </td>
-                <td align="center">{item.price}</td>
-                <td align="center">
-                  <button
-                    onClick={() => dispatch({ type: "add", id: item.id })}
-                  >
-                    +
-                  </button>
-                  {item.count}
-                  <button
-                    onClick={() => dispatch({ type: "sub", id: item.id })}
-                  >
-                    -
-                  </button>
-                </td>
-                <td align="center">{item.price * item.count}</td>
-                <td align="center">
-                  <button
-                    onClick={() => dispatch({ type: "edit", id: item.id })}
-                  >
-                    修改
-                  </button>
-                  <button
-                    onClick={() => dispatch({ type: "del", id: item.id })}
-                  >
-                    删除
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colSpan={4}></td>
-            <td align="right">
-              总价:
-              {data.reduce((a, b) => a + b.price * b.count, 0)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+      <div>
+        <button onClick={() => dispatch({ type: "add" })}>+1</button>
+        <button onClick={() => dispatch({ type: "sub" })}>-1</button>
+        <p>{state.count}</p>
+      </div>
     </>
   );
 }
@@ -350,9 +302,9 @@ function App() {
 export default App;
 ```
 
-### useImmer (第三方hook)
+## \*useImmer (第三方hook)
 
-安装: `pnpm add immer use-immer`
+安装: `pnpm add immer use-immer`, 用于简化`useState`和`useReducer`的使用, 让你可以直接修改state对象, 而不需要手动创建新对象.
 
 ```tsx
 import { useImmer, useImmerReducer } from "use-immer";
@@ -417,210 +369,208 @@ function Counter() {
 }
 ```
 
-### useSyncExternalStore
+## useSyncExternalStore
 
-useSyncExternalStore 用于从外部存储（例如状态管理库、浏览器 API 等）获取状态并在组件中同步显示。这对于需要跟踪外部状态的应用非常有用。
+案例分析:
 
-使用场景:
+React 不知道 `localStorage` 的存在。`localStorage` 是浏览器的 API，跟 React 没有半毛钱关系。所以：
 
-1. 订阅外部 store，例如 Redux、Zustand 等
-2. 订阅浏览器API 例如(online,storage,location)等
-3. 抽离逻辑，编写自定义hooks
-4. 服务端渲染支持
+```js
+// 你手动改了 localStorage
+localStorage.setItem("username", "李四");
 
-用法:
+// React 完全不知道发生了什么
+// 组件不会重新渲染！
+```
 
-```ts
-const snapshot = useSyncExternalStore(
-  subscribe,
-  getSnapshot,
-  getServerSnapshot,
+那如果要让 React 知道呢？最笨的办法：
+
+```javascript
+// 写个定时器不停地检查 localStorage 有没有变
+setInterval(() => {
+  setUsername(localStorage.getItem("username"));
+}, 100);
+```
+
+显然这种方式很蠢。React 18 推出了 useSyncExternalStore 就是为了优雅地解决这个问题
+
+> useSyncExternalStore 是干什么的？
+
+让 React 组件订阅一个"外部数据源"，数据源变化时自动重新渲染。
+
+```typescript
+const value = useSyncExternalStore(
+  subscribe, // 1. 怎么订阅？（告诉 React 听什么事件）
+  getSnapshot, // 2. 数据是什么？（告诉 React 怎么拿到当前值）
+  getServerSnapshot, // 3. (可选) 服务端渲染时拿什么值
 );
 ```
 
-- subscribe：用来订阅数据源的变化，接收一个回调函数，在数据源更新时调用该回调函数。
-- getSnapshot：获取当前数据源的快照（当前状态）。在 store 没有变化时，它必须返回与上次 `Object.is` 相等的值；如果快照是可变对象，应缓存不可变快照。
-- getServerSnapshot：可选。在服务端渲染以及 hydration 时提供初始快照；服务端输出与客户端首次读取的值应保持一致。
+`useSyncExternalStore` 用于从外部存储（例如状态管理库、浏览器 API 等）获取状态并在组件中同步显示。这对于需要跟踪外部状态的应用非常有用。
 
-案例一:
+使用场景:
 
-```tsx
-// App.tsx
-import { useStorage } from "./hooks/useStorage";
+1. 订阅外部 `store`，例如 `Redux Zustand` 等
+2. 订阅浏览器API 例如(`online storage location`)等
+3. 抽离逻辑，编写自定义`hooks`
+4. 服务端渲染支持 (SSR)
 
-const App = () => {
-  const [count, setCount] = useStorage("key", 1);
-  return (
-    <>
-      <h1>{count}</h1>
-      <button onClick={() => setCount(count + 1)}>+</button>
-      <button onClick={() => setCount(count - 1)}>-</button>
-    </>
-  );
-};
+用法:
 
-export default App;
-```
+`const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot?);`
+
+- subscribe：用来`订阅数据源的变化`，接收一个回调函数，在数据源更新时调用该回调函数.
+- getSnapshot：获取当前数据源的快照（当前状态）。在 store 没有变化时，它必须返回与上次 `Object.is` 相等的值；如果快照是可变对象，应缓存不可变快照.
+- getServerSnapshot：可选。在服务端渲染以及 `hydration` 时提供初始快照；服务端输出与客户端首次读取的值应保持一致.
 
 ```ts
-// useStorage.ts
-import { useCallback, useRef, useSyncExternalStore } from "react";
-
-const localChangeEvent = "local-storage-change";
-
-export const useStorage = <T>(key: string, initialValue: T) => {
-  const cache = useRef<{ raw: string | null; value: T }>({
-    raw: null,
-    value: initialValue,
-  });
-
-  // 订阅者
-  // 2. React 调用 subscribe(内部callback)，建立监听
-  const subscribe = useCallback(
-    (callback: () => void) => {
-      const handleStorage = (event: StorageEvent) => {
-        if (event.key === key) callback();
-      };
-      const handleLocalChange = (event: Event) => {
-        const { detail } = event as CustomEvent<{ key: string }>;
-        if (detail.key === key) callback();
-      };
-
-      // storage 事件负责其他文档的更新；自定义事件负责当前文档的更新
-      window.addEventListener("storage", handleStorage);
-      window.addEventListener(localChangeEvent, handleLocalChange);
-      return () => {
-        window.removeEventListener("storage", handleStorage);
-        window.removeEventListener(localChangeEvent, handleLocalChange);
-      };
-    },
-    [key],
-  );
-
-  // 快照
-  // 1. React 调用 getSnapshot()，先拿当前值
-  const getSnapshot = useCallback(() => {
-    const raw = localStorage.getItem(key);
-    if (raw === null) {
-      if (
-        cache.current.raw !== null ||
-        !Object.is(cache.current.value, initialValue)
-      ) {
-        cache.current = { raw: null, value: initialValue };
-      }
-      return cache.current.value;
-    }
-    if (raw === cache.current.raw) return cache.current.value;
-
-    let value = initialValue;
-    try {
-      value = JSON.parse(raw) as T;
-    } catch {
-      value = initialValue;
-    }
-    cache.current = { raw, value };
-    return value;
-  }, [initialValue, key]);
-
-  const value = useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    () => initialValue,
-  );
-
-  const update = (nextValue: T) => {
-    localStorage.setItem(key, JSON.stringify(nextValue));
-    window.dispatchEvent(
-      new CustomEvent(localChangeEvent, { detail: { key } }),
-    );
-  };
-
-  return [value, update] as const;
-};
-
-// const [count, setCount] = useStorage("count", 1);
-```
-
-案例二:
-
-```tsx
-// App.tsx
-import { useHistory } from "./hooks/useHistory";
-const App = () => {
-  const [url, push, replace] = useHistory();
-  return (
-    <>
-      <h1>{url}</h1>
-      <button onClick={() => push("/a")}>跳转</button>
-      <button onClick={() => replace("/b")}>跳转</button>
-    </>
-  );
-};
-
-export default App;
-```
-
-```ts
-// useHistory.ts
 import { useSyncExternalStore } from "react";
 
-const historyChangeEvent = "app-history-change";
-
-export const useHistory = () => {
+// 用法：const [name, setName] = useStorage("username", "游客")
+// 类似 useState，但数据存到 localStorage，跨标签页同步
+export const useStorage = <T>(
+  key: string,
+  initValue: T,
+): [T, (v: T) => void] => {
+  // 1. subscribe：告诉 React 监听什么事件
+  //    storage 事件只在【其他标签页】修改 localStorage 时触发
   const subscribe = (callback: () => void) => {
-    // popstate 处理前进/后退；hashchange 处理 URL 片段变化；
-    // 自定义事件处理本 Hook 主动执行的 pushState/replaceState。
-    window.addEventListener("popstate", callback);
-    window.addEventListener("hashchange", callback);
-    window.addEventListener(historyChangeEvent, callback);
-    return () => {
-      window.removeEventListener("popstate", callback);
-      window.removeEventListener("hashchange", callback);
-      window.removeEventListener(historyChangeEvent, callback);
-    };
+    window.addEventListener("storage", callback);
+    // 返回的清理函数，组件卸载时 React 会自动调用
+    return () => window.removeEventListener("storage", callback);
   };
 
-  const getSnapshot = () => {
-    return window.location.href;
+  // 2. getSnapshot：告诉 React 当前数据是什么
+  //    必须是纯函数，返回不可变的值
+  const getSnapshot = (): T => {
+    const value = localStorage.getItem(key);
+    if (value === null) return initValue;
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return initValue;
+    }
   };
 
-  const url = useSyncExternalStore(subscribe, getSnapshot);
+  // 3. 调用 useSyncExternalStore
+  //    React 会自动：订阅 → 取值 → 变化时重新渲染 → 卸载时清理
+  const res = useSyncExternalStore(subscribe, getSnapshot);
 
-  const push = (url: string) => {
-    window.history.pushState({}, "", url);
-    window.dispatchEvent(new Event(historyChangeEvent));
+  // 4. 更新函数：写入 localStorage
+  //    注意：当前页修改自己不会触发 storage 事件
+  //    所以手动 dispatch 一个 storage 事件让 React 重新渲染
+  const updateStorage = (newValue: T) => {
+    localStorage.setItem(key, JSON.stringify(newValue));
+    window.dispatchEvent(new Event("storage"));
   };
 
-  const replace = (url: string) => {
-    window.history.replaceState({}, "", url);
-    window.dispatchEvent(new Event(historyChangeEvent));
-  };
-
-  return [url, push, replace] as const;
+  return [res, updateStorage];
 };
-
-/**
- * url 当前页面路径
- */
-// const [url, push, replace] = useHistory();
 ```
 
-### useTransition：把非紧急更新标记为 Transition
+## useTransition
+
+> 用途: 用来告诉 React："这个更新不紧急，可以慢慢来。"
 
 ```ts
 const [isPending, startTransition] = useTransition();
 ```
 
 - 参数: `useTransition` 不需要任何参数
+- 返回值:
 
-- 返回值: `useTransition` 返回一个数组,包含两个元素
+1. `isPending(boolean)`，是否有 `transition` 还在进行中
+2. `startTransition(function)` 函数，你可以使用此方法将状态更新标记为 `transition` (包裹那些"不紧急"的更新)
 
-1. `isPending(boolean)`，告诉你是否存在待处理的 transition。
-2. `startTransition(function)` 函数，你可以使用此方法将状态更新标记为 transition。
+React 19 允许传给 `startTransition` 的 `Action` 是异步函数。不过在当前版本中，`await` 之后发生的状态更新不会自动继承 `Transition` 标记，需要再包一层 `startTransition`。输入框自身的受控更新也不能直接放进 Transition，应立即更新输入值，再延迟渲染代价较高的结果。
 
-React 19 允许传给 `startTransition` 的 Action 是异步函数。不过在当前版本中，`await` 之后发生的状态更新不会自动继承 Transition 标记，需要再包一层 `startTransition`。输入框自身的受控更新也不能直接放进 Transition，应立即更新输入值，再延迟渲染代价较高的结果。
+假设你有一个 Tab 切换，两个 Tab 的内容渲染成本不同：
 
-### useDeferredValue：延迟使用某个值
+```jsx
+import { useState, useTransition } from "react";
+
+function TabSwitch() {
+  const [tab, setTab] = useState("about");
+  const [isPending, startTransition] = useTransition();
+
+  function selectTab(nextTab) {
+    // 用 startTransition 包裹切换
+    startTransition(() => {
+      setTab(nextTab);
+    });
+  }
+
+  return (
+    <>
+      <button onClick={() => selectTab("about")}>关于</button>
+      <button onClick={() => selectTab("posts")}>文章</button>
+      <button onClick={() => selectTab("contact")}>联系</button>
+      {isPending && <span>加载中...</span>}
+      {tab === "about" && <About />}
+      {tab === "posts" && <Posts />}
+      {tab === "contact" && <Contact />}
+    </>
+  );
+}
+
+// About 很小，立刻显示
+function About() {
+  return <p>这是关于页面</p>;
+}
+
+// Posts 很大，渲染慢
+function Posts() {
+  const items = Array.from({ length: 10000 }, (_, i) => (
+    <li key={i}>文章 {i}</li>
+  ));
+  return <ul>{items}</ul>;
+}
+```
+
+效果：用户点击 Tab 按钮后，按钮响应是即时的，"加载中"提示出现，等 Posts 渲染完才显示。
+
+### 经典场景：搜索过滤
+
+这是最常见的使用场景，输入框 + 大列表过滤：
+
+```jsx
+import { useState, useTransition } from "react";
+
+function SearchBox() {
+  const [keyword, setKeyword] = useState("");
+  const [filteredList, setFilteredList] = useState([]);
+  const [isPending, startTransition] = useTransition();
+
+  function handleChange(e) {
+    const value = e.target.value;
+
+    // 紧急：输入框必须立即响应
+    setKeyword(value);
+
+    // 不紧急：过滤 10000 条数据可以慢慢来
+    startTransition(() => {
+      const result = bigList.filter((item) =>
+        item.name.toLowerCase().includes(value.toLowerCase()),
+      );
+      setFilteredList(result);
+    });
+  }
+
+  return (
+    <>
+      <input value={keyword} onChange={handleChange} />
+      {isPending && <p>过滤中...</p>}
+      <ul>
+        {filteredList.slice(0, 100).map((item) => (
+          <li key={item.id}>{item.name}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+## useDeferredValue：延迟使用某个值
 
 :::info `useTransition` 和 `useDeferredValue` 的区别
 
@@ -1606,6 +1556,18 @@ React Router v7 提供三种逐级增强的使用模式：
 
 三种模式没有统一的“最佳”选择，应根据应用是否需要数据 API、服务端渲染以及对构建架构的控制程度决定。
 
+::: tip 主要使用的hook函数
+
+```ts
+const navigate = useNavigate(); // 用于在组件中进行路由跳转
+
+const location = useLocation(); // 用于获取当前路由的相关信息，包括路径、查询参数、状态等
+
+const loader = useLoaderData(); // 用于在组件中获取路由加载器返回的数据
+```
+
+:::
+
 ### 安装
 
 ```sh
@@ -1735,7 +1697,7 @@ export default App;
 1. 在使用`createBrowserRouter`创建路由
 2. Nginx中修改`/conf/nginx.conf` , 在`location`中添加如下代码`try_files $uri $uri/ /index.html;`
 
-### 导航
+### \*导航
 
 #### Link
 
@@ -2032,7 +1994,7 @@ function Card() {
 }
 ```
 
-### 路由传参
+### \*路由传参
 
 #### 1. Query参数
 
@@ -2368,7 +2330,7 @@ export default function Content() {
 }
 ```
 
-### 路由数据 API
+### \*路由数据 API
 
 数据模式的重要能力包括：
 
@@ -2377,7 +2339,7 @@ export default function Content() {
 
 在平时工作中大部分都是在做`增刪查改(CRUD)`的操作，所以一个界面的接口过多之后就会使逻辑臃肿复杂，难以维护，所以需要使用路由的高级操作来`优化代码`。
 
-#### loader
+#### \*loader
 
 ::: tip
 loader 负责读取路由数据，会在匹配导航、GET 表单提交、显式重新验证等场景运行。它不是“收到任意 GET 请求就触发”，而是由 React Router 的数据路由流程调用。
