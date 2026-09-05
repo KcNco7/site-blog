@@ -2,8 +2,6 @@
 
 ## React 19 最常用的 Hook
 
-### 基础 Hook
-
 | Hook              | 用途                           | 使用频率   |
 | ----------------- | ------------------------------ | ---------- |
 | `useState`        | 状态管理                       | ⭐⭐⭐⭐⭐ |
@@ -236,72 +234,6 @@ setAge((currentAge) => currentAge + 1); // 依赖上一状态时更稳妥
 
 :::
 
-## useReducer：集中管理复杂状态更新
-
-`const [state, dispatch] = useReducer(reducer, initialArg, init?)`
-
-- `reducer`: 纯函数；接收当前 state 和 action，并返回下一 state。初始化和后续渲染期间 React 都可能调用它，开发模式下还可能额外调用以帮助发现副作用
-- `initialArg`: 默认值
-- `init`: 可选的惰性初始化函数；React 使用 `init(initialArg)` 的返回值作为初始 state
-
-![useReducer](/assert/react-image/useReducer.png)
-
-示例:
-
-```tsx
-import { useReducer } from "react";
-
-// 默认值
-const initialState = {
-  count: -1,
-};
-
-type State = typeof initialState;
-
-// 初始化函数 只在初始化时执行一次 修饰默认值
-const initFn = (state: State) => {
-  console.log("init", state);
-
-  // 取反
-  return { count: Math.abs(state.count) };
-};
-
-// 处理函数 默认不执行 只有在dispatch时才会执行
-// 第二个是action对象 里面有type属性 用于区分不同的操作
-const reducer = (state: State, action: { type: "add" | "sub" }) => {
-  console.log("reducer", state);
-
-  switch (action.type) {
-    case "add":
-      return { count: state.count + 1 };
-    case "sub":
-      return { count: state.count - 1 };
-    default:
-      return state;
-  }
-};
-
-function App() {
-  // 第一个参数是reducer处理函数
-  // 第二个参数是默认值
-  // 第三个参数可选 初始化函数 用于修饰默认值
-  // 传了第三个参数后，默认值会被传入初始化函数中，返回值会作为最终的默认值 如果没传就是直接使用默认值
-  const [state, dispatch] = useReducer(reducer, initialState, initFn);
-
-  return (
-    <>
-      <div>
-        <button onClick={() => dispatch({ type: "add" })}>+1</button>
-        <button onClick={() => dispatch({ type: "sub" })}>-1</button>
-        <p>{state.count}</p>
-      </div>
-    </>
-  );
-}
-
-export default App;
-```
-
 ## \*useImmer (第三方hook)
 
 安装: `pnpm add immer use-immer`, 用于简化`useState`和`useReducer`的使用, 让你可以直接修改state对象, 而不需要手动创建新对象.
@@ -369,225 +301,7 @@ function Counter() {
 }
 ```
 
-## useSyncExternalStore
-
-案例分析:
-
-React 不知道 `localStorage` 的存在。`localStorage` 是浏览器的 API，跟 React 没有半毛钱关系。所以：
-
-```js
-// 你手动改了 localStorage
-localStorage.setItem("username", "李四");
-
-// React 完全不知道发生了什么
-// 组件不会重新渲染！
-```
-
-那如果要让 React 知道呢？最笨的办法：
-
-```javascript
-// 写个定时器不停地检查 localStorage 有没有变
-setInterval(() => {
-  setUsername(localStorage.getItem("username"));
-}, 100);
-```
-
-显然这种方式很蠢。React 18 推出了 useSyncExternalStore 就是为了优雅地解决这个问题
-
-> useSyncExternalStore 是干什么的？
-
-让 React 组件订阅一个"外部数据源"，数据源变化时自动重新渲染。
-
-```typescript
-const value = useSyncExternalStore(
-  subscribe, // 1. 怎么订阅？（告诉 React 听什么事件）
-  getSnapshot, // 2. 数据是什么？（告诉 React 怎么拿到当前值）
-  getServerSnapshot, // 3. (可选) 服务端渲染时拿什么值
-);
-```
-
-`useSyncExternalStore` 用于从外部存储（例如状态管理库、浏览器 API 等）获取状态并在组件中同步显示。这对于需要跟踪外部状态的应用非常有用。
-
-使用场景:
-
-1. 订阅外部 `store`，例如 `Redux Zustand` 等
-2. 订阅浏览器API 例如(`online storage location`)等
-3. 抽离逻辑，编写自定义`hooks`
-4. 服务端渲染支持 (SSR)
-
-用法:
-
-`const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot?);`
-
-- subscribe：用来`订阅数据源的变化`，接收一个回调函数，在数据源更新时调用该回调函数.
-- getSnapshot：获取当前数据源的快照（当前状态）。在 store 没有变化时，它必须返回与上次 `Object.is` 相等的值；如果快照是可变对象，应缓存不可变快照.
-- getServerSnapshot：可选。在服务端渲染以及 `hydration` 时提供初始快照；服务端输出与客户端首次读取的值应保持一致.
-
-```ts
-import { useSyncExternalStore } from "react";
-
-// 用法：const [name, setName] = useStorage("username", "游客")
-// 类似 useState，但数据存到 localStorage，跨标签页同步
-export const useStorage = <T>(
-  key: string,
-  initValue: T,
-): [T, (v: T) => void] => {
-  // 1. subscribe：告诉 React 监听什么事件
-  //    storage 事件只在【其他标签页】修改 localStorage 时触发
-  const subscribe = (callback: () => void) => {
-    window.addEventListener("storage", callback);
-    // 返回的清理函数，组件卸载时 React 会自动调用
-    return () => window.removeEventListener("storage", callback);
-  };
-
-  // 2. getSnapshot：告诉 React 当前数据是什么
-  //    必须是纯函数，返回不可变的值
-  const getSnapshot = (): T => {
-    const value = localStorage.getItem(key);
-    if (value === null) return initValue;
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return initValue;
-    }
-  };
-
-  // 3. 调用 useSyncExternalStore
-  //    React 会自动：订阅 → 取值 → 变化时重新渲染 → 卸载时清理
-  const res = useSyncExternalStore(subscribe, getSnapshot);
-
-  // 4. 更新函数：写入 localStorage
-  //    注意：当前页修改自己不会触发 storage 事件
-  //    所以手动 dispatch 一个 storage 事件让 React 重新渲染
-  const updateStorage = (newValue: T) => {
-    localStorage.setItem(key, JSON.stringify(newValue));
-    window.dispatchEvent(new Event("storage"));
-  };
-
-  return [res, updateStorage];
-};
-```
-
-## useTransition
-
-> 用途: 用来告诉 React："这个更新不紧急，可以慢慢来。"
-
-```ts
-const [isPending, startTransition] = useTransition();
-```
-
-- 参数: `useTransition` 不需要任何参数
-- 返回值:
-
-1. `isPending(boolean)`，是否有 `transition` 还在进行中
-2. `startTransition(function)` 函数，你可以使用此方法将状态更新标记为 `transition` (包裹那些"不紧急"的更新)
-
-React 19 允许传给 `startTransition` 的 `Action` 是异步函数。不过在当前版本中，`await` 之后发生的状态更新不会自动继承 `Transition` 标记，需要再包一层 `startTransition`。输入框自身的受控更新也不能直接放进 Transition，应立即更新输入值，再延迟渲染代价较高的结果。
-
-假设你有一个 Tab 切换，两个 Tab 的内容渲染成本不同：
-
-```jsx
-import { useState, useTransition } from "react";
-
-function TabSwitch() {
-  const [tab, setTab] = useState("about");
-  const [isPending, startTransition] = useTransition();
-
-  function selectTab(nextTab) {
-    // 用 startTransition 包裹切换
-    startTransition(() => {
-      setTab(nextTab);
-    });
-  }
-
-  return (
-    <>
-      <button onClick={() => selectTab("about")}>关于</button>
-      <button onClick={() => selectTab("posts")}>文章</button>
-      <button onClick={() => selectTab("contact")}>联系</button>
-      {isPending && <span>加载中...</span>}
-      {tab === "about" && <About />}
-      {tab === "posts" && <Posts />}
-      {tab === "contact" && <Contact />}
-    </>
-  );
-}
-
-// About 很小，立刻显示
-function About() {
-  return <p>这是关于页面</p>;
-}
-
-// Posts 很大，渲染慢
-function Posts() {
-  const items = Array.from({ length: 10000 }, (_, i) => (
-    <li key={i}>文章 {i}</li>
-  ));
-  return <ul>{items}</ul>;
-}
-```
-
-效果：用户点击 Tab 按钮后，按钮响应是即时的，"加载中"提示出现，等 Posts 渲染完才显示。
-
-### 经典场景：搜索过滤
-
-这是最常见的使用场景，输入框 + 大列表过滤：
-
-```jsx
-import { useState, useTransition } from "react";
-
-function SearchBox() {
-  const [keyword, setKeyword] = useState("");
-  const [filteredList, setFilteredList] = useState([]);
-  const [isPending, startTransition] = useTransition();
-
-  function handleChange(e) {
-    const value = e.target.value;
-
-    // 紧急：输入框必须立即响应
-    setKeyword(value);
-
-    // 不紧急：过滤 10000 条数据可以慢慢来
-    startTransition(() => {
-      const result = bigList.filter((item) =>
-        item.name.toLowerCase().includes(value.toLowerCase()),
-      );
-      setFilteredList(result);
-    });
-  }
-
-  return (
-    <>
-      <input value={keyword} onChange={handleChange} />
-      {isPending && <p>过滤中...</p>}
-      <ul>
-        {filteredList.slice(0, 100).map((item) => (
-          <li key={item.id}>{item.name}</li>
-        ))}
-      </ul>
-    </>
-  );
-}
-```
-
-## useDeferredValue：延迟使用某个值
-
-:::info `useTransition` 和 `useDeferredValue` 的区别
-
-`useTransition` 和 `useDeferredValue` 都涉及延迟更新，但它们关注的重点和用途略有不同：
-
-- `useTransition` 用于把自己能够控制的状态更新标记为非紧急更新，并通过 `isPending` 提供待处理状态。
-- `useDeferredValue` 返回某个值的延迟版本，适合在无法控制该值的更新来源时，让依赖它的较慢 UI 在后台重新渲染。它不会延迟网络请求，也不会改变原值本身。
-  :::
-
-```ts
-// value: 延迟更新的值(支持任意类型)
-const deferredValue = useDeferredValue(value, initialValue);
-```
-
-第二个 `initialValue` 参数是可选的；提供时，组件首次渲染会使用它作为延迟值，并在后台用真实值重新渲染。
-
-### useEffect
+## \*useEffect
 
 `useEffect` 用于让组件与 React 之外的系统同步，例如网络、浏览器 API、计时器或第三方组件。它的执行过程和类组件的部分生命周期阶段相似，但更准确的理解是“建立同步，并在必要时撤销同步”。
 
@@ -629,7 +343,7 @@ const renamedUser = renameUser(immutableUser);
 console.log(immutableUser, renamedUser);
 ```
 
-#### 基本用法
+### 基本用法
 
 ```ts
 useEffect(setup, dependencies);
@@ -702,7 +416,184 @@ function Clock() {
 }
 ```
 
-### SWR
+## \*useRef
+
+- 通过Ref操作DOM元素
+- 数据存储
+
+```tsx
+import { useRef } from "react";
+
+function TextInput() {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <>
+      <input ref={inputRef} />
+      <button onClick={() => inputRef.current?.focus()}>聚焦</button>
+    </>
+  );
+}
+```
+
+### 注意事项
+
+1. 组件在重新渲染的时候，useRef的值不会被重新初始化。
+2. 改变 ref.current 属性时，React 不会重新渲染组件。React 不知道它何时会发生改变，因为 ref 是一个普通的 JavaScript 对象。(不是响应式的)
+3. `ref` 对象本身的引用通常是稳定的，可以出现在依赖数组中；但修改 `ref.current` 不会触发渲染，因此把 `ref.current` 放入依赖数组也不能让 Effect 自动响应其变化。
+4. React 18 中，函数组件要接收父组件传入的 `ref`，通常需要 `forwardRef`。React 19 支持把 `ref` 作为函数组件的 prop 传入，新代码不再必须使用 `forwardRef`；类组件和 DOM 元素仍可直接接收 ref。
+
+## \*useMemo 性能优化
+
+`useMemo` 是 React 提供的性能优化 Hook。它会在依赖不变时复用上一次的计算结果，可用于跳过代价较高的计算或稳定对象引用。它不提供语义保证，React 在特定情况下可能丢弃缓存，因此程序的正确性不能依赖 `useMemo`。
+
+### React.memo
+
+`React.memo` 是一个 React API，用于在父组件重新渲染、且组件 props 与上次相比没有变化时跳过该组件的重新渲染。默认比较方式是逐项使用 `Object.is`；组件自身 state 或读取到的 Context 变化时仍会重新渲染。
+
+### 用法
+
+使用 `React.memo` 包裹组件可以在 props 稳定时跳过一部分不必要的重新渲染，但它只是性能优化，不应无条件用于所有组件。
+
+```tsx
+// React.memo
+import { memo, useMemo, useState } from "react";
+
+const MyComponent = memo(({ total }: { total: number }) => {
+  return <p>总计：{total}</p>;
+});
+
+const App = () => {
+  const [prices, setPrices] = useState([10, 20, 30]);
+  const total = useMemo(
+    () => prices.reduce((sum, price) => sum + price, 0),
+    [prices],
+  );
+
+  return (
+    <>
+      <MyComponent total={total} />
+      <button onClick={() => setPrices((items) => [...items, 40])}>添加</button>
+    </>
+  );
+};
+```
+
+::: warning React的渲染条件是什么?
+
+1. 组件自身 state 更新。
+2. 组件读取的 Context 值变化。
+3. 父组件重新渲染时，默认也会继续渲染其子组件；`memo` 可以在 props 未变化时跳过这一过程。
+4. 外部 store 的订阅快照发生变化等其他更新来源。
+   :::
+
+## \*useCallback 性能优化
+
+`useCallback` 返回一个在依赖不变时保持引用相同的函数。它常与 `memo`、其他 Hook 的依赖数组或需要稳定回调引用的 API 配合使用。
+
+组件每次渲染时仍会创建传给 `useCallback` 的函数表达式；React 只是决定返回上次缓存的函数引用还是本次的新函数。单独使用它不会阻止组件渲染，也不一定能提高性能。
+
+### 用法
+
+```ts
+const memoizedCallback = useCallback(() => {
+  doSomething(a, b);
+}, [a, b]);
+```
+
+:::info `useCallback` 和 `useMemo` 的区别
+
+- `useMemo(() => value, deps)` 缓存计算结果。
+- `useCallback(fn, deps)` 缓存函数引用，等价于 `useMemo(() => fn, deps)`。
+  :::
+
+## useImperativeHandle 父组件使用子组件的实例 方法
+
+```ts
+/**
+ * ref: 父组件传递的ref对象
+   createHandle: 返回值，返回一个对象，对象的属性就是子组件暴露给父组件的方法或属性
+   deps?:[可选] 依赖项，当依赖项发生变化时，会重新调用createHandle函数，类似于useEffect的依赖项
+ */
+useImperativeHandle(
+  ref,
+  () => {
+    return {
+      // 暴露给父组件的方法或属性
+    };
+  },
+  dependencies,
+);
+```
+
+### 执行时机
+
+1. 不传第三个参数时，每次组件重新渲染都会重新执行 `createHandle`。
+2. 传入空数组时，在依赖不变的情况下复用同一个句柄。
+3. 传入依赖项时，React 使用 `Object.is` 比较依赖；变化后会重新执行 `createHandle`。开发环境 Strict Mode 可能额外调用组件函数以检查纯度，因此不要在 `createHandle` 中放置副作用。
+
+## useContext
+
+`useContext` 提供了一个无需为每层组件手动添加 props，就能在组件树间进行数据传递的方法。设计的目的就是解决组件树间数据传递的问题。
+
+:::info 面试题
+使用 `useContext` 避免了层层传递props, 并且实现了跨组件之间的共享状态, 使组件之间的通讯变得更加简单. 换而言之, `useContext` 实现了祖孙级别的通讯.
+:::
+
+### 基本用法
+
+```tsx
+import { createContext, useContext } from "react";
+
+const MyThemeContext = createContext({ theme: "light" });
+
+function App() {
+  return (
+    <MyThemeContext value={{ theme: "dark" }}>
+      <MyComponent />
+    </MyThemeContext>
+  );
+}
+
+function MyComponent() {
+  const themeContext = useContext(MyThemeContext);
+  return <div>{themeContext.theme}</div>;
+}
+```
+
+React 19 可以直接把 Context 对象作为 Provider 使用。React 18 应写成 `<MyThemeContext.Provider value={...}>`；React 19 仍兼容 `.Provider`，并不是删除了 Provider。
+
+### 注意事项
+
+- Provider 接收的上下文值使用 `value` prop 传递
+- 可以使用多个 `Context`
+- 组件读取同一个 Context 时，会获得其上方距离最近的 Provider 所提供的值
+
+## useDebugValue
+
+`useDebugValue` 是一个专为开发者调试自定义 Hook 而设计的 React Hook。它允许你在 React 开发者工具中为自定义 Hook 添加自定义的调试值。
+
+### 用法
+
+```ts
+useDebugValue(value, formatValue);
+```
+
+`useDebugValue` 没有返回值，应在自定义 Hook 顶层调用。可选的格式化函数只在 React DevTools 读取调试值时执行，适合格式化成本较高的情况。
+
+## useId
+
+`useId` 是 React 18 新增的一个 Hook，用于生成稳定的唯一标识符，主要用于解决 SSR 场景下的 ID 不一致问题，或者需要为组件生成唯一 ID 的场景。
+
+用法:
+
+```ts
+const id = useId();
+```
+
+返回值的具体格式属于 React 实现细节，不应解析或依赖；`useId` 主要用于关联 `label` 与表单控件、ARIA 属性等。它不应用来生成列表的 `key`，列表 key 应来自数据本身。
+
+## SWR
 
 SWR = Stale-While-Revalidate，用于数据获取的 React Hooks 库
 
@@ -815,7 +706,7 @@ const { trigger, data, error, isMutating } = useSWRMutation(
 - isMutating：是否正在请求中（true/false）。
 - error：请求失败时的错误对象。
 
-### useLayoutEffect
+## useLayoutEffect
 
 `useLayoutEffect` 是 React 中的一个 Hook，用于在浏览器重新绘制屏幕之前触发。
 
@@ -848,182 +739,324 @@ useLayoutEffect(() => {
 - 防止闪烁：在某些情况下，异步的`useEffect`可能会导致可见的布局跳动或闪烁。例如，动画的启动或某些可见的快速DOM更改。
 - 第三方 DOM 库要求在浏览器绘制前完成测量和同步调整。除此之外应优先使用 `useEffect`，避免不必要地阻塞绘制。
 
-### useRef
+## useReducer：集中管理复杂状态更新
 
-- 通过Ref操作DOM元素
-- 数据存储
+`const [state, dispatch] = useReducer(reducer, initialArg, init?)`
+
+- `reducer`: 纯函数；接收当前 state 和 action，并返回下一 state。初始化和后续渲染期间 React 都可能调用它，开发模式下还可能额外调用以帮助发现副作用
+- `initialArg`: 默认值
+- `init`: 可选的惰性初始化函数；React 使用 `init(initialArg)` 的返回值作为初始 state
+
+![useReducer](/assert/react-image/useReducer.png)
+
+示例:
 
 ```tsx
-import { useRef } from "react";
+import { useReducer } from "react";
 
-function TextInput() {
-  const inputRef = useRef<HTMLInputElement>(null);
+// 默认值
+const initialState = {
+  count: -1,
+};
+
+type State = typeof initialState;
+
+// 初始化函数 只在初始化时执行一次 修饰默认值
+const initFn = (state: State) => {
+  console.log("init", state);
+
+  // 取反
+  return { count: Math.abs(state.count) };
+};
+
+// 处理函数 默认不执行 只有在dispatch时才会执行
+// 第二个是action对象 里面有type属性 用于区分不同的操作
+const reducer = (state: State, action: { type: "add" | "sub" }) => {
+  console.log("reducer", state);
+
+  switch (action.type) {
+    case "add":
+      return { count: state.count + 1 };
+    case "sub":
+      return { count: state.count - 1 };
+    default:
+      return state;
+  }
+};
+
+function App() {
+  // 第一个参数是reducer处理函数
+  // 第二个参数是默认值
+  // 第三个参数可选 初始化函数 用于修饰默认值
+  // 传了第三个参数后，默认值会被传入初始化函数中，返回值会作为最终的默认值 如果没传就是直接使用默认值
+  const [state, dispatch] = useReducer(reducer, initialState, initFn);
 
   return (
     <>
-      <input ref={inputRef} />
-      <button onClick={() => inputRef.current?.focus()}>聚焦</button>
+      <div>
+        <button onClick={() => dispatch({ type: "add" })}>+1</button>
+        <button onClick={() => dispatch({ type: "sub" })}>-1</button>
+        <p>{state.count}</p>
+      </div>
     </>
   );
 }
+
+export default App;
 ```
 
-#### 注意事项
+## useSyncExternalStore
 
-1. 组件在重新渲染的时候，useRef的值不会被重新初始化。
-2. 改变 ref.current 属性时，React 不会重新渲染组件。React 不知道它何时会发生改变，因为 ref 是一个普通的 JavaScript 对象。(不是响应式的)
-3. `ref` 对象本身的引用通常是稳定的，可以出现在依赖数组中；但修改 `ref.current` 不会触发渲染，因此把 `ref.current` 放入依赖数组也不能让 Effect 自动响应其变化。
-4. React 18 中，函数组件要接收父组件传入的 `ref`，通常需要 `forwardRef`。React 19 支持把 `ref` 作为函数组件的 prop 传入，新代码不再必须使用 `forwardRef`；类组件和 DOM 元素仍可直接接收 ref。
+案例分析:
 
-### useImperativeHandle 父组件使用子组件的实例 方法
+React 不知道 `localStorage` 的存在。`localStorage` 是浏览器的 API，跟 React 没有半毛钱关系。所以：
 
-```ts
-/**
- * ref: 父组件传递的ref对象
-   createHandle: 返回值，返回一个对象，对象的属性就是子组件暴露给父组件的方法或属性
-   deps?:[可选] 依赖项，当依赖项发生变化时，会重新调用createHandle函数，类似于useEffect的依赖项
- */
-useImperativeHandle(
-  ref,
-  () => {
-    return {
-      // 暴露给父组件的方法或属性
-    };
-  },
-  dependencies,
+```js
+// 你手动改了 localStorage
+localStorage.setItem("username", "李四");
+
+// React 完全不知道发生了什么
+// 组件不会重新渲染！
+```
+
+那如果要让 React 知道呢？最笨的办法：
+
+```javascript
+// 写个定时器不停地检查 localStorage 有没有变
+setInterval(() => {
+  setUsername(localStorage.getItem("username"));
+}, 100);
+```
+
+显然这种方式很蠢。React 18 推出了 useSyncExternalStore 就是为了优雅地解决这个问题
+
+> useSyncExternalStore 是干什么的？
+
+让 React 组件订阅一个"外部数据源"，数据源变化时自动重新渲染。
+
+```typescript
+const value = useSyncExternalStore(
+  subscribe, // 1. 怎么订阅？（告诉 React 听什么事件）
+  getSnapshot, // 2. 数据是什么？（告诉 React 怎么拿到当前值）
+  getServerSnapshot, // 3. (可选) 服务端渲染时拿什么值
 );
 ```
 
-#### 执行时机
+`useSyncExternalStore` 用于从外部存储（例如状态管理库、浏览器 API 等）获取状态并在组件中同步显示。这对于需要跟踪外部状态的应用非常有用。
 
-1. 不传第三个参数时，每次组件重新渲染都会重新执行 `createHandle`。
-2. 传入空数组时，在依赖不变的情况下复用同一个句柄。
-3. 传入依赖项时，React 使用 `Object.is` 比较依赖；变化后会重新执行 `createHandle`。开发环境 Strict Mode 可能额外调用组件函数以检查纯度，因此不要在 `createHandle` 中放置副作用。
+使用场景:
 
-### useContext
+1. 订阅外部 `store`，例如 `Redux Zustand` 等
+2. 订阅浏览器API 例如(`online storage location`)等
+3. 抽离逻辑，编写自定义`hooks`
+4. 服务端渲染支持 (SSR)
 
-`useContext` 提供了一个无需为每层组件手动添加 props，就能在组件树间进行数据传递的方法。设计的目的就是解决组件树间数据传递的问题。
+用法:
 
-:::info 面试题
-使用 `useContext` 避免了层层传递props, 并且实现了跨组件之间的共享状态, 使组件之间的通讯变得更加简单. 换而言之, `useContext` 实现了祖孙级别的通讯.
-:::
+`const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot?);`
 
-#### 基本用法
+- subscribe：用来`订阅数据源的变化`，接收一个回调函数，在数据源更新时调用该回调函数.
+- getSnapshot：获取当前数据源的快照（当前状态）。在 store 没有变化时，它必须返回与上次 `Object.is` 相等的值；如果快照是可变对象，应缓存不可变快照.
+- getServerSnapshot：可选。在服务端渲染以及 `hydration` 时提供初始快照；服务端输出与客户端首次读取的值应保持一致.
 
-```tsx
-import { createContext, useContext } from "react";
+```ts
+import { useSyncExternalStore } from "react";
 
-const MyThemeContext = createContext({ theme: "light" });
+// 用法：const [name, setName] = useStorage("username", "游客")
+// 类似 useState，但数据存到 localStorage，跨标签页同步
+export const useStorage = <T>(
+  key: string,
+  initValue: T,
+): [T, (v: T) => void] => {
+  // 1. subscribe：告诉 React 监听什么事件
+  //    storage 事件只在【其他标签页】修改 localStorage 时触发
+  const subscribe = (callback: () => void) => {
+    window.addEventListener("storage", callback);
+    // 返回的清理函数，组件卸载时 React 会自动调用
+    return () => window.removeEventListener("storage", callback);
+  };
 
-function App() {
-  return (
-    <MyThemeContext value={{ theme: "dark" }}>
-      <MyComponent />
-    </MyThemeContext>
-  );
-}
+  // 2. getSnapshot：告诉 React 当前数据是什么
+  //    必须是纯函数，返回不可变的值
+  const getSnapshot = (): T => {
+    const value = localStorage.getItem(key);
+    if (value === null) return initValue;
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return initValue;
+    }
+  };
 
-function MyComponent() {
-  const themeContext = useContext(MyThemeContext);
-  return <div>{themeContext.theme}</div>;
-}
-```
+  // 3. 调用 useSyncExternalStore
+  //    React 会自动：订阅 → 取值 → 变化时重新渲染 → 卸载时清理
+  const res = useSyncExternalStore(subscribe, getSnapshot);
 
-React 19 可以直接把 Context 对象作为 Provider 使用。React 18 应写成 `<MyThemeContext.Provider value={...}>`；React 19 仍兼容 `.Provider`，并不是删除了 Provider。
+  // 4. 更新函数：写入 localStorage
+  //    注意：当前页修改自己不会触发 storage 事件
+  //    所以手动 dispatch 一个 storage 事件让 React 重新渲染
+  const updateStorage = (newValue: T) => {
+    localStorage.setItem(key, JSON.stringify(newValue));
+    window.dispatchEvent(new Event("storage"));
+  };
 
-#### 注意事项
-
-- Provider 接收的上下文值使用 `value` prop 传递
-- 可以使用多个 `Context`
-- 组件读取同一个 Context 时，会获得其上方距离最近的 Provider 所提供的值
-
-### useMemo 性能优化
-
-`useMemo` 是 React 提供的性能优化 Hook。它会在依赖不变时复用上一次的计算结果，可用于跳过代价较高的计算或稳定对象引用。它不提供语义保证，React 在特定情况下可能丢弃缓存，因此程序的正确性不能依赖 `useMemo`。
-
-#### React.memo
-
-`React.memo` 是一个 React API，用于在父组件重新渲染、且组件 props 与上次相比没有变化时跳过该组件的重新渲染。默认比较方式是逐项使用 `Object.is`；组件自身 state 或读取到的 Context 变化时仍会重新渲染。
-
-#### 用法
-
-使用 `React.memo` 包裹组件可以在 props 稳定时跳过一部分不必要的重新渲染，但它只是性能优化，不应无条件用于所有组件。
-
-```tsx
-// React.memo
-import { memo, useMemo, useState } from "react";
-
-const MyComponent = memo(({ total }: { total: number }) => {
-  return <p>总计：{total}</p>;
-});
-
-const App = () => {
-  const [prices, setPrices] = useState([10, 20, 30]);
-  const total = useMemo(
-    () => prices.reduce((sum, price) => sum + price, 0),
-    [prices],
-  );
-
-  return (
-    <>
-      <MyComponent total={total} />
-      <button onClick={() => setPrices((items) => [...items, 40])}>添加</button>
-    </>
-  );
+  return [res, updateStorage];
 };
 ```
 
-::: warning React的渲染条件是什么?
+## useTransition (较少使用)
 
-1. 组件自身 state 更新。
-2. 组件读取的 Context 值变化。
-3. 父组件重新渲染时，默认也会继续渲染其子组件；`memo` 可以在 props 未变化时跳过这一过程。
-4. 外部 store 的订阅快照发生变化等其他更新来源。
-   :::
-
-### useCallback 性能优化
-
-`useCallback` 返回一个在依赖不变时保持引用相同的函数。它常与 `memo`、其他 Hook 的依赖数组或需要稳定回调引用的 API 配合使用。
-
-组件每次渲染时仍会创建传给 `useCallback` 的函数表达式；React 只是决定返回上次缓存的函数引用还是本次的新函数。单独使用它不会阻止组件渲染，也不一定能提高性能。
-
-#### 用法
+> 用途: 用来告诉 React："这个更新不紧急，可以慢慢来。"
 
 ```ts
-const memoizedCallback = useCallback(() => {
-  doSomething(a, b);
-}, [a, b]);
+const [isPending, startTransition] = useTransition();
 ```
 
-:::info `useCallback` 和 `useMemo` 的区别
+- 参数: `useTransition` 不需要任何参数
+- 返回值:
 
-- `useMemo(() => value, deps)` 缓存计算结果。
-- `useCallback(fn, deps)` 缓存函数引用，等价于 `useMemo(() => fn, deps)`。
+1. `isPending(boolean)`，是否有 `transition` 还在进行中
+2. `startTransition(function)` 函数，你可以使用此方法将状态更新标记为 `transition` (包裹那些"不紧急"的更新)
+
+React 19 允许传给 `startTransition` 的 `Action` 是异步函数。不过在当前版本中，`await` 之后发生的状态更新不会自动继承 `Transition` 标记，需要再包一层 `startTransition`。输入框自身的受控更新也不能直接放进 Transition，应立即更新输入值，再延迟渲染代价较高的结果。
+
+假设你有一个 Tab 切换，两个 Tab 的内容渲染成本不同：
+
+```jsx
+import { useState, useTransition } from "react";
+
+function TabSwitch() {
+  const [tab, setTab] = useState("about");
+  const [isPending, startTransition] = useTransition();
+
+  function selectTab(nextTab) {
+    // 用 startTransition 包裹切换
+    startTransition(() => {
+      setTab(nextTab);
+    });
+  }
+
+  return (
+    <>
+      <button onClick={() => selectTab("about")}>关于</button>
+      <button onClick={() => selectTab("posts")}>文章</button>
+      <button onClick={() => selectTab("contact")}>联系</button>
+      {isPending && <span>加载中...</span>}
+      {tab === "about" && <About />}
+      {tab === "posts" && <Posts />}
+      {tab === "contact" && <Contact />}
+    </>
+  );
+}
+
+// About 很小，立刻显示
+function About() {
+  return <p>这是关于页面</p>;
+}
+
+// Posts 很大，渲染慢
+function Posts() {
+  const items = Array.from({ length: 10000 }, (_, i) => (
+    <li key={i}>文章 {i}</li>
+  ));
+  return <ul>{items}</ul>;
+}
+```
+
+效果：用户点击 Tab 按钮后，按钮响应是即时的，"加载中"提示出现，等 Posts 渲染完才显示。
+
+### 经典场景：搜索过滤
+
+这是最常见的使用场景，输入框 + 大列表过滤：
+
+```jsx
+import { useState, useTransition } from "react";
+
+function SearchBox() {
+  const [keyword, setKeyword] = useState("");
+  const [filteredList, setFilteredList] = useState([]);
+  const [isPending, startTransition] = useTransition();
+
+  function handleChange(e) {
+    const value = e.target.value;
+
+    // 紧急：输入框必须立即响应
+    setKeyword(value);
+
+    // 不紧急：过滤 10000 条数据可以慢慢来
+    startTransition(() => {
+      const result = bigList.filter((item) =>
+        item.name.toLowerCase().includes(value.toLowerCase()),
+      );
+      setFilteredList(result);
+    });
+  }
+
+  return (
+    <>
+      <input value={keyword} onChange={handleChange} />
+      {isPending && <p>过滤中...</p>}
+      <ul>
+        {filteredList.slice(0, 100).map((item) => (
+          <li key={item.id}>{item.name}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
+```
+
+## useDeferredValue
+
+> 用途: 延迟某些状态的更新
+
+它接收一个值, 返回这个值的`延迟(lagging)副本`。当 `value` 变化时, React 会先优先处理紧急的交互(比如输入框的打字), 暂缓重新渲染用到 `deferredValue` 的那部分内容, 等浏览器空闲了再更新。
+
+:::info `useTransition` 和 `useDeferredValue` 的区别
+
+`useTransition` 和 `useDeferredValue` 都涉及延迟更新，但它们关注的重点和用途略有不同：
+
+- `useTransition` 用于把自己能够控制的状态更新标记为非紧急更新，并通过 `isPending` 提供待处理状态。
+- `useDeferredValue` 返回某个值的延迟版本，适合在无法控制该值的更新来源时，让依赖它的较慢 UI 在后台重新渲染。它不会延迟网络请求，也不会改变原值本身。
   :::
-
-### useDebugValue
-
-`useDebugValue` 是一个专为开发者调试自定义 Hook 而设计的 React Hook。它允许你在 React 开发者工具中为自定义 Hook 添加自定义的调试值。
-
-#### 用法
-
-```ts
-useDebugValue(value, formatValue);
-```
-
-`useDebugValue` 没有返回值，应在自定义 Hook 顶层调用。可选的格式化函数只在 React DevTools 读取调试值时执行，适合格式化成本较高的情况。
-
-### useId
-
-`useId` 是 React 18 新增的一个 Hook，用于生成稳定的唯一标识符，主要用于解决 SSR 场景下的 ID 不一致问题，或者需要为组件生成唯一 ID 的场景。
 
 用法:
 
 ```ts
-const id = useId();
+// value: 延迟更新的值(支持任意类型)
+const deferredValue = useDeferredValue(value, initialValue);
 ```
 
-返回值的具体格式属于 React 实现细节，不应解析或依赖；`useId` 主要用于关联 `label` 与表单控件、ARIA 属性等。它不应用来生成列表的 `key`，列表 key 应来自数据本身。
+第二个 `initialValue` 参数是可选的；提供时，组件首次渲染会使用它作为延迟值，并在后台用真实值重新渲染。
+
+### 经典场景: 搜索列表
+
+```ts
+import { useDeferredValue, useState, useMemo } from 'react';
+
+function App() {
+  const [query, setQuery] = useState('');
+  // 延迟版本 —— 用于大列表过滤(非紧急更新)
+  const deferredQuery = useDeferredValue(query);
+  // 判断是否正在过渡: 两者不相等说明展示的仍是旧值
+  const isStale = query !== deferredQuery;
+
+  const list = useMemo(() => {
+    return expensiveFilter(allItems, deferredQuery);
+  }, [deferredQuery]);
+
+  return (
+    <>
+      {/* 原始 query 立即用于 input 的 value(紧急更新) */}
+      <input value={query} onChange={e => setQuery(e.target.value)} />
+      {isStale ? <div>加载中...</div> : null}
+      <SlowList items={list} />
+    </>
+  );
+}
+```
+
+效果: 打字时输入框立即响应(不卡顿)，下方的列表过滤慢半拍更新。`useDeferredValue` 不会返回 `isStale`，需手动比对 `query !== deferredQuery` 来判断是否正在过渡。
 
 ## 组件
 
